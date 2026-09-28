@@ -42,12 +42,8 @@
     ++authOperation;
     currentUser=null;
     markLoggedOut();
-    // Close the UI immediately. The user never waits for the network.
     closeAuth();
     resetAccountButton();
-
-    // IMPORTANT: signOut must happen BEFORE clearing the stored token.
-    // Clearing it first can prevent Supabase from completing its own sign-out.
     try {
       if(enabled&&client) await client.auth.signOut({scope:'local'});
     } catch(e) { console.warn('Supabase local logout:',e); }
@@ -66,8 +62,35 @@
     $('syncNow').onclick=async e=>{e.preventDefault();e.stopPropagation();if(loggingOut)return;await saveProgress(JSON.parse(localStorage.getItem('dmp-state')||'{}'));if(!loggingOut)setStatus('تمت مزامنة التقدم بنجاح ✅',true);};
     $('logoutBtn').onclick=e=>{e.preventDefault();e.stopPropagation();logoutNow();return false;};
   }
-  async function signIn(){if(loggingOut||!enabled)return;clearLoggedOut();const op=++authOperation,e=$('authEmail')?.value.trim(),p=$('authPassword')?.value||'';if(!e||!p)return setStatus('دخل البريد الإلكتروني وكلمة المرور.');setStatus('جاري تسجيل الدخول...');const{error}=await client.auth.signInWithPassword({email:e,password:p});if(op!==authOperation||loggingOut)return;if(error)return setStatus(error.message);closeAuth();}
-  async function signUp(){if(loggingOut||!enabled)return;clearLoggedOut();const op=++authOperation,e=$('authEmail')?.value.trim(),p=$('authPassword')?.value||'';if(!e||p.length<6)return setStatus('استعمل بريد صحيح وكلمة مرور من 6 أحرف على الأقل.');setStatus('جاري إنشاء الحساب...');const{data,error}=await client.auth.signUp({email:e,password:p});if(op!==authOperation||loggingOut)return;if(error)return setStatus(error.message);if(!data.session)return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجل الدخول.',true);closeAuth();}
+
+  async function signIn(){
+    if(loggingOut||!enabled)return;
+    clearLoggedOut();
+    const op=++authOperation;
+    const e=$('authEmail')?.value.trim(),p=$('authPassword')?.value||'';
+    if(!e||!p)return setStatus('دخل البريد الإلكتروني وكلمة المرور.');
+    setStatus('جاري تسجيل الدخول...');
+    try {
+      const result = await Promise.race([
+        client.auth.signInWithPassword({email:e,password:p}),
+        new Promise(resolve=>setTimeout(()=>resolve({timeout:true}),15000))
+      ]);
+      if(op!==authOperation||loggingOut)return;
+      if(result?.timeout)return setStatus('تعذر الاتصال بخدمة تسجيل الدخول. حاول مرة أخرى.');
+      const {data,error}=result;
+      if(error)return setStatus(error.message);
+      currentUser = data?.user || data?.session?.user || null;
+      if(!currentUser)return setStatus('تم تسجيل الدخول لكن لم يتم استلام جلسة الحساب. أعد المحاولة.');
+      showAccount();
+      closeAuth();
+      loadProgress(currentUser).catch(()=>{});
+    } catch(err) {
+      if(op!==authOperation||loggingOut)return;
+      setStatus(err?.message || 'وقع خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+    }
+  }
+
+  async function signUp(){if(loggingOut||!enabled)return;clearLoggedOut();const op=++authOperation,e=$('authEmail')?.value.trim(),p=$('authPassword')?.value||'';if(!e||p.length<6)return setStatus('استعمل بريد صحيح وكلمة مرور من 6 أحرف على الأقل.');setStatus('جاري إنشاء الحساب...');const{data,error}=await client.auth.signUp({email:e,password:p});if(op!==authOperation||loggingOut)return;if(error)return setStatus(error.message);if(!data.session)return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجل الدخول.',true);currentUser=data.user||data.session.user;showAccount();closeAuth();}
   async function resetPassword(){if(loggingOut||!enabled)return;const e=$('authEmail')?.value.trim();if(!e)return setStatus('دخل البريد الإلكتروني أولاً.');setStatus('جاري إرسال الرابط...');const{error}=await client.auth.resetPasswordForEmail(e,{redirectTo:location.origin+location.pathname});if(!loggingOut)setStatus(error?error.message:'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك.',!error);}
   async function loadProgress(user){if(!enabled||!user||forcedLoggedOut())return;const{data,error}=await client.from('course_progress').select('state').eq('user_id',user.id).maybeSingle();if(error||loggingOut||!currentUser||forcedLoggedOut())return;if(data?.state){localStorage.setItem('dmp-state',JSON.stringify(data.state));window.dispatchEvent(new CustomEvent('dmp-cloud-state',{detail:{state:data.state}}));}else await saveProgress(JSON.parse(localStorage.getItem('dmp-state')||'{}'));}
   async function saveProgress(state){if(!enabled||!currentUser||loggingOut||forcedLoggedOut())return;await client.from('course_progress').upsert({user_id:currentUser.id,state,updated_at:new Date().toISOString()});}
