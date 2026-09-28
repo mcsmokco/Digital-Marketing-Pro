@@ -88,27 +88,30 @@
     document.getElementById('logoutBtn').onclick = signOut;
   }
 
-  async function signOut() {
+  function signOut() {
     if (loggingOut) return;
     loggingOut = true;
     showLoggedOut();
     closeAuth();
     window.dispatchEvent(new CustomEvent('dmp-logged-out'));
-    try {
-      if (enabled && client) await client.auth.signOut({ scope: 'local' });
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
+
+    // Supabase logout happens in the background; UI does not wait for it.
+    if (enabled && client) {
+      client.auth.signOut({ scope: 'local' }).catch(error => console.error('Logout error:', error)).finally(() => {
+        loggingOut = false;
+        showLoggedOut();
+        closeAuth();
+      });
+    } else {
       loggingOut = false;
-      showLoggedOut();
-      closeAuth();
     }
   }
 
-  document.addEventListener('click', (event) => {
+  document.addEventListener('click', event => {
     const button = event.target?.closest?.('#logoutBtn');
     if (!button) return;
     event.preventDefault();
+    event.stopImmediatePropagation?.();
     event.stopPropagation();
     signOut();
   }, true);
