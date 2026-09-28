@@ -94,14 +94,17 @@
     if (!enabled || !client) return;
     const btn = document.getElementById('logoutBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'جاري تسجيل الخروج...'; }
-    const { error } = await client.auth.signOut();
-    if (error) {
-      if (btn) { btn.disabled = false; btn.textContent = 'تسجيل الخروج'; }
-      return setStatus(error.message);
-    }
-    // Update the UI immediately; the saved course progress stays in localStorage/cloud.
+
+    // Update the UI immediately so the user does not need to refresh the page.
     showLoggedOut();
     closeAuth();
+
+    // Complete the Supabase sign-out in the background.
+    const { error } = await client.auth.signOut();
+    if (error) {
+      console.error('Logout error:', error);
+      return;
+    }
   }
 
   async function signIn() {
