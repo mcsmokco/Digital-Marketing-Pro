@@ -1,5 +1,7 @@
-/* Root logout fix: close the modal immediately and sign out without a refresh. */
+/* Root logout fix: immediate, mobile-safe, no refresh required. */
 (() => {
+  let handled = false;
+
   function closeNow() {
     const modal = document.getElementById('authModal');
     if (!modal) return;
@@ -12,28 +14,35 @@
     document.body.classList.remove('auth-open');
   }
 
-  function logout() {
-    // UI must never wait for Supabase/network.
+  function logout(event) {
+    const target = event.target;
+    const button = target && target.closest ? target.closest('#logoutBtn') : null;
+    if (!button || handled) return;
+
+    handled = true;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+
+    // 1) Close the modal immediately — never wait for network/Supabase.
     closeNow();
+
+    // 2) Complete the Supabase local sign-out in the background.
     if (typeof window.DMP_logout === 'function') {
       Promise.resolve(window.DMP_logout()).catch(() => {});
     }
+
+    // Allow a future login/logout cycle to work normally.
+    setTimeout(() => { handled = false; }, 300);
   }
 
   window.DMP_closeAuthImmediately = closeNow;
-  window.DMP_logoutImmediately = logout;
+  window.DMP_logoutImmediately = () => {
+    closeNow();
+    if (typeof window.DMP_logout === 'function') Promise.resolve(window.DMP_logout()).catch(() => {});
+  };
 
-  // The logout button is recreated after login, so delegate from document.
-  // pointerup is important on mobile; click remains as a fallback.
-  function handle(event) {
-    const target = event.target;
-    const btn = target && target.closest ? target.closest('#logoutBtn') : null;
-    if (!btn) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    logout();
-  }
-
-  document.addEventListener('pointerup', handle, true);
-  document.addEventListener('click', handle, true);
+  // Capture phase catches dynamically-created #logoutBtn on Android/Chrome.
+  document.addEventListener('pointerdown', logout, true);
+  document.addEventListener('click', logout, true);
 })();
