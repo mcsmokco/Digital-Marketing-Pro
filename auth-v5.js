@@ -5,7 +5,6 @@
   const client = enabled ? window.supabase.createClient(url, key) : null;
   let currentUser = null;
   let loggingOut = false;
-
   const emit = (type, detail = {}) => window.dispatchEvent(new CustomEvent(type, { detail }));
   const configMessage = !enabled ? 'الحسابات السحابية غير مفعلة بعد. ضع Supabase URL و anon key في supabase-config.js.' : '';
 
@@ -20,22 +19,24 @@
     document.body.classList.remove('auth-open');
   }
 
+  function resetAccountButton() {
+    const area = document.getElementById('accountArea');
+    if (!area) return;
+    area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
+    const btn = document.getElementById('accountBtn');
+    if (btn) btn.onclick = openAuth;
+  }
+
   function showLoggedOut() {
     currentUser = null;
     closeAuth();
-    const area = document.getElementById('accountArea');
-    if (area) {
-      area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
-      const btn = document.getElementById('accountBtn');
-      if (btn) btn.onclick = openAuth;
-    }
+    resetAccountButton();
   }
 
   function ensureUi() {
     if (document.getElementById('accountArea')) return;
     const nav = document.querySelector('.nav');
     if (!nav) return;
-
     const area = document.createElement('div');
     area.id = 'accountArea';
     area.className = 'account-area';
@@ -56,7 +57,6 @@
       <button class="auth-link" id="resetBtn" type="button">نسيت كلمة المرور؟</button><p class="auth-status" id="authStatus"></p>
     </div>`;
     document.body.appendChild(modal);
-
     document.getElementById('accountBtn').onclick = openAuth;
     document.getElementById('authClose').onclick = closeAuth;
     modal.addEventListener('click', e => { if (e.target === modal) closeAuth(); });
@@ -101,47 +101,33 @@
       await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
       setStatus('تمت مزامنة التقدم بنجاح ✅', true);
     };
-    document.getElementById('logoutBtn').onclick = (event) => signOut(event);
+    // Direct handler: no document capture listener and no event interception.
+    document.getElementById('logoutBtn').onclick = signOut;
   }
 
-  function signOut(event) {
-    if (event) {
-      event.preventDefault();
-      event.stopImmediatePropagation?.();
-      event.stopPropagation();
-    }
+  function signOut() {
     if (loggingOut) return;
     loggingOut = true;
 
-    // HARD UI FIRST: close the modal synchronously, before Supabase or any promise.
-    closeAuth();
+    // FIRST: update the visible UI synchronously.
     currentUser = null;
-    const area = document.getElementById('accountArea');
-    if (area) {
-      area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
-      document.getElementById('accountBtn').onclick = openAuth;
-    }
+    closeAuth();
+    resetAccountButton();
     emit('dmp-logged-out');
 
-    // Never block the UI on the network operation.
+    // SECOND: terminate the Supabase local session without blocking the UI.
     if (enabled && client) {
-      Promise.resolve().then(() => client.auth.signOut({ scope: 'local' })).catch(err => console.error('Logout error:', err)).finally(() => {
-        loggingOut = false;
-      });
+      client.auth.signOut({ scope: 'local' })
+        .catch(err => console.error('Logout error:', err))
+        .finally(() => { loggingOut = false; });
     } else {
       loggingOut = false;
     }
   }
 
-  // Capture phase handles both the current button and any stale DOM handler.
-  document.addEventListener('click', event => {
-    const button = event.target?.closest?.('#logoutBtn');
-    if (!button) return;
-    signOut(event);
-  }, true);
-
   window.DMP_logout = signOut;
   window.DMP_closeAuth = closeAuth;
+  window.DMP_openAuth = openAuth;
 
   async function signIn() {
     if (!enabled) return setStatus(configMessage);
@@ -151,7 +137,6 @@
     setStatus('جاري تسجيل الدخول...');
     const { error } = await client.auth.signInWithPassword({ email, password });
     if (error) return setStatus(error.message);
-    setStatus('تم تسجيل الدخول ✅', true);
     closeAuth();
   }
 
@@ -164,7 +149,6 @@
     const { data, error } = await client.auth.signUp({ email, password });
     if (error) return setStatus(error.message);
     if (!data.session) return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجل الدخول.', true);
-    setStatus('تم إنشاء الحساب وتسجيل الدخول ✅', true);
     closeAuth();
   }
 
