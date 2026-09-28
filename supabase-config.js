@@ -1,5 +1,5 @@
 // Digital Marketing Pro — Supabase configuration
 // Replace these two values with your Supabase project's public URL and anon key.
 // IMPORTANT: use only the public anon key here. Never put a service_role key in this file.
-window.DMP_SUPABASE_URL = '';
-window.DMP_SUPABASE_ANON_KEY = '';
+window.DMP_SUPABASE_URL = 'https://cehqazcdwcadkjwcxspb.supabase.co';
+window.DMP_SUPABASE_ANON_KEY = 'sb_publishable_rXlR-6VTFEcxmOwLsqyKWQ_lxqmrryY';
