@@ -9,10 +9,33 @@
   const emit = (type, detail = {}) => window.dispatchEvent(new CustomEvent(type, { detail }));
   const configMessage = !enabled ? 'الحسابات السحابية غير مفعلة بعد. ضع Supabase URL و anon key في supabase-config.js.' : '';
 
+  function closeAuth() {
+    const modal = document.getElementById('authModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.style.display = 'none';
+    modal.style.visibility = 'hidden';
+    modal.style.pointerEvents = 'none';
+    document.body.classList.remove('auth-open');
+  }
+
+  function showLoggedOut() {
+    currentUser = null;
+    closeAuth();
+    const area = document.getElementById('accountArea');
+    if (area) {
+      area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
+      const btn = document.getElementById('accountBtn');
+      if (btn) btn.onclick = openAuth;
+    }
+  }
+
   function ensureUi() {
     if (document.getElementById('accountArea')) return;
     const nav = document.querySelector('.nav');
     if (!nav) return;
+
     const area = document.createElement('div');
     area.id = 'accountArea';
     area.className = 'account-area';
@@ -47,35 +70,18 @@
     if (el) { el.textContent = text; el.classList.toggle('ok', ok); }
   }
 
-  function closeAuth() {
-    const modal = document.getElementById('authModal');
-    if (!modal) return;
-    modal.classList.remove('show');
-    modal.setAttribute('aria-hidden', 'true');
-    modal.style.display = 'none';
-    document.body.classList.remove('auth-open');
-  }
-
   function openAuth() {
     ensureUi();
     const modal = document.getElementById('authModal');
     if (!modal) return;
+    modal.style.visibility = 'visible';
+    modal.style.pointerEvents = 'auto';
     modal.style.display = 'grid';
     modal.classList.add('show');
     modal.setAttribute('aria-hidden', 'false');
     if (!enabled) return setStatus(configMessage);
     if (currentUser && !loggingOut) showAccount();
     else document.getElementById('authEmail')?.focus();
-  }
-
-  function showLoggedOut() {
-    currentUser = null;
-    const area = document.getElementById('accountArea');
-    if (area) {
-      area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
-      document.getElementById('accountBtn').onclick = openAuth;
-    }
-    closeAuth();
   }
 
   function showAccount() {
@@ -95,22 +101,31 @@
       await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
       setStatus('تمت مزامنة التقدم بنجاح ✅', true);
     };
-    document.getElementById('logoutBtn').onclick = signOut;
+    document.getElementById('logoutBtn').onclick = (event) => signOut(event);
   }
 
-  // IMPORTANT: close the modal synchronously. Never wait for Supabase.
   function signOut(event) {
-    if (event) { event.preventDefault(); event.stopPropagation(); }
+    if (event) {
+      event.preventDefault();
+      event.stopImmediatePropagation?.();
+      event.stopPropagation();
+    }
     if (loggingOut) return;
     loggingOut = true;
 
-    // The visible logout action is completed immediately.
-    showLoggedOut();
+    // HARD UI FIRST: close the modal synchronously, before Supabase or any promise.
+    closeAuth();
+    currentUser = null;
+    const area = document.getElementById('accountArea');
+    if (area) {
+      area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
+      document.getElementById('accountBtn').onclick = openAuth;
+    }
     emit('dmp-logged-out');
 
-    // Cloud logout happens afterwards and cannot block the UI.
+    // Never block the UI on the network operation.
     if (enabled && client) {
-      client.auth.signOut({ scope: 'local' }).catch(err => console.error('Logout error:', err)).finally(() => {
+      Promise.resolve().then(() => client.auth.signOut({ scope: 'local' })).catch(err => console.error('Logout error:', err)).finally(() => {
         loggingOut = false;
       });
     } else {
@@ -118,13 +133,15 @@
     }
   }
 
-  // Capture clicks as a final guard, including clicks from any stale/replaced button.
+  // Capture phase handles both the current button and any stale DOM handler.
   document.addEventListener('click', event => {
     const button = event.target?.closest?.('#logoutBtn');
-    if (button) signOut(event);
+    if (!button) return;
+    signOut(event);
   }, true);
 
   window.DMP_logout = signOut;
+  window.DMP_closeAuth = closeAuth;
 
   async function signIn() {
     if (!enabled) return setStatus(configMessage);
