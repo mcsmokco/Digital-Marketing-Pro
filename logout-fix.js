@@ -1,7 +1,20 @@
-/* Final logout guard: close the account modal synchronously on every mobile pointer/touch/click path. */
+/* Hard logout fix for mobile browsers and cached auth state. */
 (() => {
   let busy = false;
   const FLAG = 'dmp-force-logged-out';
+
+  function clearSupabaseAuthStorage() {
+    try {
+      for (const store of [localStorage, sessionStorage]) {
+        const remove = [];
+        for (let i = 0; i < store.length; i++) {
+          const key = store.key(i);
+          if (key && (/^sb-.*-auth-token$/i.test(key) || /supabase.*auth.*token/i.test(key))) remove.push(key);
+        }
+        remove.forEach(key => store.removeItem(key));
+      }
+    } catch (_) {}
+  }
 
   function closeModal() {
     const modal = document.getElementById('authModal');
@@ -19,51 +32,69 @@
   function resetAccount() {
     const area = document.getElementById('accountArea');
     if (!area) return;
-    area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
+    area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 تسجيل الدخول</button>';
     const btn = document.getElementById('accountBtn');
     if (btn && typeof window.DMP_openAuth === 'function') btn.onclick = window.DMP_openAuth;
   }
 
-  function runLogout(event) {
+  function markLoggedOut() {
+    try { sessionStorage.setItem(FLAG, '1'); } catch (_) {}
+    clearSupabaseAuthStorage();
+    try { window.dispatchEvent(new CustomEvent('dmp-logged-out')); } catch (_) {}
+  }
+
+  function hardLogout(event) {
     const target = event && event.target;
     const button = target && target.closest ? target.closest('#logoutBtn') : null;
     if (!button || busy) return;
 
     busy = true;
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
 
-    // This flag is set synchronously so the auth listener can NEVER reopen the modal.
-    try { sessionStorage.setItem(FLAG, '1'); } catch (e) {}
+    // 1) Mark logged out and clear the persisted token synchronously.
+    markLoggedOut();
 
-    // UI changes happen synchronously, before any Supabase/network work.
+    // 2) Change the UI synchronously. Nothing waits for Supabase/network.
     button.disabled = true;
     closeModal();
     resetAccount();
 
-    // Finish Supabase sign-out in the background. The UI never waits for it.
+    // 3) Tell Supabase to revoke the session in the background.
     try {
-      if (typeof window.DMP_logout === 'function') {
-        Promise.resolve(window.DMP_logout()).catch(() => {});
+      const url = window.DMP_SUPABASE_URL;
+      const key = window.DMP_SUPABASE_ANON_KEY;
+      if (url && key && window.supabase) {
+        const client = window.supabase.createClient(url, key, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        });
+        client.auth.signOut({ scope: 'global' }).catch(() => {}).finally(() => {
+          clearSupabaseAuthStorage();
+        });
       }
-    } catch (e) {}
+    } catch (_) {}
 
-    setTimeout(() => { busy = false; }, 500);
+    // Also use the existing app logout, but never wait for it.
+    try {
+      if (typeof window.DMP_logout === 'function') Promise.resolve(window.DMP_logout()).catch(() => {});
+    } catch (_) {}
+
+    setTimeout(() => { busy = false; }, 700);
   }
 
   window.DMP_closeAuthImmediately = closeModal;
   window.DMP_logoutImmediately = () => {
-    try { sessionStorage.setItem(FLAG, '1'); } catch (e) {}
+    markLoggedOut();
     closeModal();
     resetAccount();
-    if (typeof window.DMP_logout === 'function') Promise.resolve(window.DMP_logout()).catch(() => {});
+    try {
+      if (typeof window.DMP_logout === 'function') Promise.resolve(window.DMP_logout()).catch(() => {});
+    } catch (_) {}
   };
 
-  // Capture phase + touch/pointer/click covers Android Chrome and dynamically-created buttons.
-  document.addEventListener('pointerdown', runLogout, true);
-  document.addEventListener('touchstart', runLogout, true);
-  document.addEventListener('click', runLogout, true);
+  // Capture phase catches dynamically-created logout buttons on Android Chrome.
+  document.addEventListener('pointerdown', hardLogout, true);
+  document.addEventListener('touchstart', hardLogout, true);
+  document.addEventListener('click', hardLogout, true);
 })();
