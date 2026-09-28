@@ -5,10 +5,8 @@
   let client = null;
   let currentUser = null;
   let loggingOut = false;
-
   const emit = (type, detail = {}) => window.dispatchEvent(new CustomEvent(type, { detail }));
   const configMessage = !enabled ? 'الحسابات السحابية غير مفعلة بعد. ضع Supabase URL و anon key في supabase-config.js.' : '';
-
   if (enabled) client = window.supabase.createClient(url, key);
 
   function ensureUi() {
@@ -16,28 +14,22 @@
     const nav = document.querySelector('.nav');
     if (!nav) return;
     const area = document.createElement('div');
-    area.id = 'accountArea';
-    area.className = 'account-area';
+    area.id = 'accountArea'; area.className = 'account-area';
     area.innerHTML = '<button class="account-btn" id="accountBtn">👤 حسابي</button>';
     nav.insertBefore(area, document.getElementById('themeBtn'));
-
     const modal = document.createElement('div');
-    modal.id = 'authModal';
-    modal.className = 'auth-modal';
+    modal.id = 'authModal'; modal.className = 'auth-modal';
     modal.innerHTML = `<div class="auth-box" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <button class="auth-close" id="authClose" aria-label="إغلاق">×</button>
-      <span class="eyebrow">DIGITAL MARKETING PRO</span>
-      <h2 id="authTitle">حساب المتعلم</h2>
+      <span class="eyebrow">DIGITAL MARKETING PRO</span><h2 id="authTitle">حساب المتعلم</h2>
       <p class="auth-note" id="authNote">سجّل الدخول لحفظ تقدمك على أي جهاز.</p>
       <label>البريد الإلكتروني<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label>
       <label>كلمة المرور<input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••"></label>
       <div class="auth-actions"><button class="btn primary" id="loginBtn">تسجيل الدخول</button><button class="btn ghost" id="signupBtn">إنشاء حساب</button></div>
-      <button class="auth-link" id="resetBtn">نسيت كلمة المرور؟</button>
-      <p class="auth-status" id="authStatus"></p>
+      <button class="auth-link" id="resetBtn">نسيت كلمة المرور؟</button><p class="auth-status" id="authStatus"></p>
     </div>`;
     document.body.appendChild(modal);
-
-    document.getElementById('accountBtn').onclick = () => openAuth();
+    document.getElementById('accountBtn').onclick = openAuth;
     document.getElementById('authClose').onclick = closeAuth;
     modal.addEventListener('click', e => { if (e.target === modal) closeAuth(); });
     document.getElementById('loginBtn').onclick = signIn;
@@ -52,7 +44,11 @@
 
   function openAuth() {
     ensureUi();
-    document.getElementById('authModal').classList.add('show');
+    const m = document.getElementById('authModal');
+    if (!m) return;
+    m.style.display = '';
+    m.removeAttribute('aria-hidden');
+    m.classList.add('show');
     if (!enabled) return setStatus(configMessage);
     if (currentUser && !loggingOut) showAccount();
     else if (!currentUser) document.getElementById('authEmail')?.focus();
@@ -60,7 +56,12 @@
 
   function closeAuth() {
     const m = document.getElementById('authModal');
-    if (m) m.classList.remove('show');
+    if (!m) return;
+    // Force-close the modal immediately; this does not depend on Supabase/network.
+    m.classList.remove('show');
+    m.setAttribute('aria-hidden', 'true');
+    m.style.display = 'none';
+    document.body.classList.remove('auth-open');
   }
 
   function showLoggedOut() {
@@ -74,16 +75,12 @@
 
   function showAccount() {
     if (loggingOut) return;
-    const note = document.getElementById('authNote');
-    const actions = document.querySelector('.auth-actions');
-    const reset = document.getElementById('resetBtn');
-    const email = document.getElementById('authEmail');
-    const pass = document.getElementById('authPassword');
+    const note = document.getElementById('authNote'), actions = document.querySelector('.auth-actions');
+    const reset = document.getElementById('resetBtn'), email = document.getElementById('authEmail'), pass = document.getElementById('authPassword');
     if (!currentUser || !note || !actions || !email || !pass || !reset) return;
     note.textContent = `مسجل الدخول: ${currentUser.email}`;
-    email.style.display = 'none';
-    pass.style.display = 'none';
-    actions.innerHTML = '<button class="btn primary" id="syncNow">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn">تسجيل الخروج</button>';
+    email.style.display = 'none'; pass.style.display = 'none';
+    actions.innerHTML = '<button class="btn primary" id="syncNow">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>';
     reset.style.display = 'none';
     document.getElementById('syncNow').onclick = async () => {
       await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
@@ -93,17 +90,17 @@
   }
 
   async function signOut() {
-    if (!enabled || !client || loggingOut) return;
+    if (loggingOut) return;
     loggingOut = true;
-
-    // Clear the UI immediately. No refresh is required.
+    // FIRST: close the visible modal and reset the account button synchronously.
     showLoggedOut();
     closeAuth();
-
-    // Sign out only the local session. The UI is already logged out even if the network is slow.
+    // Also remove any possible inline/show state left by an older cached script.
+    const m = document.getElementById('authModal');
+    if (m) { m.classList.remove('show'); m.style.display = 'none'; m.setAttribute('aria-hidden', 'true'); }
+    // SECOND: end the Supabase local session. Network errors cannot keep the modal open.
     try {
-      const { error } = await client.auth.signOut({ scope: 'local' });
-      if (error) console.error('Logout error:', error);
+      if (enabled && client) await client.auth.signOut({ scope: 'local' });
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
@@ -113,27 +110,23 @@
 
   async function signIn() {
     if (!enabled) return setStatus(configMessage);
-    const email = document.getElementById('authEmail').value.trim();
-    const password = document.getElementById('authPassword').value;
+    const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value;
     if (!email || !password) return setStatus('دخل البريد الإلكتروني وكلمة المرور.');
     setStatus('جاري تسجيل الدخول...');
     const { error } = await client.auth.signInWithPassword({ email, password });
     if (error) return setStatus(error.message);
-    setStatus('تم تسجيل الدخول ✅', true);
-    closeAuth();
+    setStatus('تم تسجيل الدخول ✅', true); closeAuth();
   }
 
   async function signUp() {
     if (!enabled) return setStatus(configMessage);
-    const email = document.getElementById('authEmail').value.trim();
-    const password = document.getElementById('authPassword').value;
+    const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value;
     if (!email || password.length < 6) return setStatus('استعمل بريد صحيح وكلمة مرور من 6 أحرف على الأقل.');
     setStatus('جاري إنشاء الحساب...');
     const { data, error } = await client.auth.signUp({ email, password });
     if (error) return setStatus(error.message);
     if (!data.session) return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجل الدخول.', true);
-    setStatus('تم إنشاء الحساب وتسجيل الدخول ✅', true);
-    closeAuth();
+    setStatus('تم إنشاء الحساب وتسجيل الدخول ✅', true); closeAuth();
   }
 
   async function resetPassword() {
@@ -148,12 +141,8 @@
     if (!enabled || !user) return;
     const { data, error } = await client.from('course_progress').select('state').eq('user_id', user.id).maybeSingle();
     if (error) return;
-    if (data?.state) {
-      localStorage.setItem('dmp-state', JSON.stringify(data.state));
-      emit('dmp-cloud-state', { state: data.state });
-    } else {
-      await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
-    }
+    if (data?.state) { localStorage.setItem('dmp-state', JSON.stringify(data.state)); emit('dmp-cloud-state', { state: data.state }); }
+    else await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
   }
 
   async function saveProgress(state) {
@@ -161,28 +150,19 @@
     await client.from('course_progress').upsert({ user_id: currentUser.id, state, updated_at: new Date().toISOString() });
   }
 
-  window.DMP_saveState = saveProgress;
-  window.DMP_cloudEnabled = enabled;
+  window.DMP_saveState = saveProgress; window.DMP_cloudEnabled = enabled;
 
   document.addEventListener('DOMContentLoaded', async () => {
     ensureUi();
     if (!enabled) return;
     const { data } = await client.auth.getSession();
     currentUser = data.session?.user || null;
-    if (currentUser) {
-      showAccount();
-      await loadProgress(currentUser);
-    }
+    if (currentUser) { showAccount(); await loadProgress(currentUser); }
     client.auth.onAuthStateChange((_event, session) => {
       if (loggingOut) return;
       currentUser = session?.user || null;
-      if (currentUser) {
-        ensureUi();
-        showAccount();
-        loadProgress(currentUser).catch(() => {});
-      } else {
-        showLoggedOut();
-      }
+      if (currentUser) { ensureUi(); showAccount(); loadProgress(currentUser).catch(() => {}); }
+      else showLoggedOut();
     });
   });
 })();
