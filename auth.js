@@ -48,14 +48,28 @@
     const el = document.getElementById('authStatus');
     if (el) { el.textContent = text; el.classList.toggle('ok', ok); }
   }
+
   function openAuth() {
     ensureUi();
     document.getElementById('authModal').classList.add('show');
-    document.getElementById('authEmail').focus();
-    if (!enabled) setStatus(configMessage);
-    else if (currentUser) showAccount();
+    if (!enabled) return setStatus(configMessage);
+    if (currentUser) showAccount();
+    else document.getElementById('authEmail')?.focus();
   }
-  function closeAuth() { const m = document.getElementById('authModal'); if (m) m.classList.remove('show'); }
+
+  function closeAuth() {
+    const m = document.getElementById('authModal');
+    if (m) m.classList.remove('show');
+  }
+
+  function showLoggedOut() {
+    currentUser = null;
+    const area = document.getElementById('accountArea');
+    if (area) {
+      area.innerHTML = '<button class="account-btn" id="accountBtn">👤 حسابي</button>';
+      document.getElementById('accountBtn').onclick = openAuth;
+    }
+  }
 
   function showAccount() {
     const note = document.getElementById('authNote');
@@ -63,13 +77,31 @@
     const reset = document.getElementById('resetBtn');
     const email = document.getElementById('authEmail');
     const pass = document.getElementById('authPassword');
-    if (!currentUser) return;
+    if (!currentUser || !note || !actions || !email || !pass || !reset) return;
     note.textContent = `مسجل الدخول: ${currentUser.email}`;
-    email.style.display = 'none'; pass.style.display = 'none';
+    email.style.display = 'none';
+    pass.style.display = 'none';
     actions.innerHTML = '<button class="btn primary" id="syncNow">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn">تسجيل الخروج</button>';
     reset.style.display = 'none';
-    document.getElementById('syncNow').onclick = async () => { await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}')); setStatus('تمت مزامنة التقدم بنجاح ✅', true); };
-    document.getElementById('logoutBtn').onclick = async () => { await client.auth.signOut(); closeAuth(); };
+    document.getElementById('syncNow').onclick = async () => {
+      await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
+      setStatus('تمت مزامنة التقدم بنجاح ✅', true);
+    };
+    document.getElementById('logoutBtn').onclick = signOut;
+  }
+
+  async function signOut() {
+    if (!enabled || !client) return;
+    const btn = document.getElementById('logoutBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'جاري تسجيل الخروج...'; }
+    const { error } = await client.auth.signOut();
+    if (error) {
+      if (btn) { btn.disabled = false; btn.textContent = 'تسجيل الخروج'; }
+      return setStatus(error.message);
+    }
+    // Update the UI immediately; the saved course progress stays in localStorage/cloud.
+    showLoggedOut();
+    closeAuth();
   }
 
   async function signIn() {
@@ -134,10 +166,16 @@
       showAccount();
       await loadProgress(currentUser);
     }
-    client.auth.onAuthStateChange(async (_event, session) => {
+    client.auth.onAuthStateChange((_event, session) => {
       currentUser = session?.user || null;
-      if (currentUser) { ensureUi(); showAccount(); await loadProgress(currentUser); }
-      else { ensureUi(); document.getElementById('accountArea').innerHTML = '<button class="account-btn" id="accountBtn">👤 حسابي</button>'; document.getElementById('accountBtn').onclick = openAuth; }
+      if (currentUser) {
+        ensureUi();
+        showAccount();
+        // Do not block the auth event with a long async callback.
+        loadProgress(currentUser).catch(() => {});
+      } else {
+        showLoggedOut();
+      }
     });
   });
 })();
