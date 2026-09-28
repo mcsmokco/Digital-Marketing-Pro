@@ -35,16 +35,23 @@
 
     try { sessionStorage.setItem(FLAG, '1'); } catch (_) {}
 
-    // UI changes happen synchronously — never wait for Supabase or a refresh.
+    // First: make logout visible immediately.
     closeModalNow();
     resetAccount();
 
-    // Let the real auth layer finish the Supabase local sign-out in the background.
+    // Then: complete Supabase local sign-out without blocking the UI.
     try {
       if (typeof window.DMP_logout === 'function') window.DMP_logout();
     } catch (_) {}
 
-    window.setTimeout(() => { handled = false; }, 300);
+    // Fallback requested: refresh automatically after logout.
+    // Auth storage has already been cleared by the logout flow, so the reload
+    // guarantees the whole page is rebuilt in the logged-out state.
+    window.setTimeout(() => {
+      try { location.reload(); } catch (_) { window.location.href = window.location.href; }
+    }, 1000);
+
+    window.setTimeout(() => { handled = false; }, 1500);
   }
 
   document.addEventListener('pointerdown', handleLogout, true);
