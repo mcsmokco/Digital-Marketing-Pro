@@ -1,4 +1,4 @@
-/* FINAL logout fix: only intercept the actual logout button. */
+/* Root logout fix: close the modal immediately and sign out without a refresh. */
 (() => {
   function closeNow() {
     const modal = document.getElementById('authModal');
@@ -12,24 +12,28 @@
     document.body.classList.remove('auth-open');
   }
 
-  window.DMP_closeAuthImmediately = closeNow;
+  function logout() {
+    // UI must never wait for Supabase/network.
+    closeNow();
+    if (typeof window.DMP_logout === 'function') {
+      Promise.resolve(window.DMP_logout()).catch(() => {});
+    }
+  }
 
-  // #logoutBtn is recreated dynamically, so use one delegated listener.
-  // It only intercepts the real logout button; every other button is untouched.
-  document.addEventListener('click', function (event) {
+  window.DMP_closeAuthImmediately = closeNow;
+  window.DMP_logoutImmediately = logout;
+
+  // The logout button is recreated after login, so delegate from document.
+  // pointerup is important on mobile; click remains as a fallback.
+  function handle(event) {
     const target = event.target;
     const btn = target && target.closest ? target.closest('#logoutBtn') : null;
     if (!btn) return;
-
     event.preventDefault();
     event.stopImmediatePropagation();
+    logout();
+  }
 
-    // Close immediately, before waiting for Supabase.
-    closeNow();
-
-    // Sign out in the background.
-    if (typeof window.DMP_logout === 'function') {
-      window.DMP_logout();
-    }
-  }, true);
+  document.addEventListener('pointerup', handle, true);
+  document.addEventListener('click', handle, true);
 })();
