@@ -4,6 +4,7 @@
   const enabled = Boolean(url && key && window.supabase);
   let client = null;
   let currentUser = null;
+  let loggingOut = false;
 
   const emit = (type, detail = {}) => window.dispatchEvent(new CustomEvent(type, { detail }));
   const configMessage = !enabled ? 'الحسابات السحابية غير مفعلة بعد. ضع Supabase URL و anon key في supabase-config.js.' : '';
@@ -53,8 +54,8 @@
     ensureUi();
     document.getElementById('authModal').classList.add('show');
     if (!enabled) return setStatus(configMessage);
-    if (currentUser) showAccount();
-    else document.getElementById('authEmail')?.focus();
+    if (currentUser && !loggingOut) showAccount();
+    else if (!currentUser) document.getElementById('authEmail')?.focus();
   }
 
   function closeAuth() {
@@ -72,6 +73,7 @@
   }
 
   function showAccount() {
+    if (loggingOut) return;
     const note = document.getElementById('authNote');
     const actions = document.querySelector('.auth-actions');
     const reset = document.getElementById('resetBtn');
@@ -91,19 +93,21 @@
   }
 
   async function signOut() {
-    if (!enabled || !client) return;
-    const btn = document.getElementById('logoutBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'جاري تسجيل الخروج...'; }
+    if (!enabled || !client || loggingOut) return;
+    loggingOut = true;
 
-    // Update the UI immediately so the user does not need to refresh the page.
+    // Clear the UI immediately. No refresh is required.
     showLoggedOut();
     closeAuth();
 
-    // Complete the Supabase sign-out in the background.
-    const { error } = await client.auth.signOut();
-    if (error) {
+    // Sign out only the local session. The UI is already logged out even if the network is slow.
+    try {
+      const { error } = await client.auth.signOut({ scope: 'local' });
+      if (error) console.error('Logout error:', error);
+    } catch (error) {
       console.error('Logout error:', error);
-      return;
+    } finally {
+      loggingOut = false;
     }
   }
 
@@ -170,11 +174,11 @@
       await loadProgress(currentUser);
     }
     client.auth.onAuthStateChange((_event, session) => {
+      if (loggingOut) return;
       currentUser = session?.user || null;
       if (currentUser) {
         ensureUi();
         showAccount();
-        // Do not block the auth event with a long async callback.
         loadProgress(currentUser).catch(() => {});
       } else {
         showLoggedOut();
