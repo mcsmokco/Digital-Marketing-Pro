@@ -8,9 +8,9 @@
   let authOperation = 0;
   const LOGGED_OUT = 'dmp-force-logged-out';
   const $ = id => document.getElementById(id);
-  const forcedLoggedOut = () => sessionStorage.getItem(LOGGED_OUT) === '1';
-  const markLoggedOut = () => sessionStorage.setItem(LOGGED_OUT, '1');
-  const clearLoggedOut = () => sessionStorage.removeItem(LOGGED_OUT);
+  const forcedLoggedOut = () => { try { return sessionStorage.getItem(LOGGED_OUT) === '1'; } catch (e) { return false; } };
+  const markLoggedOut = () => { try { sessionStorage.setItem(LOGGED_OUT, '1'); } catch (e) {} };
+  const clearLoggedOut = () => { try { sessionStorage.removeItem(LOGGED_OUT); } catch (e) {} };
 
   function closeAuth() {
     const modal = $('authModal');
@@ -95,27 +95,31 @@
     else $('authEmail')?.focus();
   }
 
-  async function logoutNow() {
+  function logoutNow() {
     if (loggingOut) return;
     loggingOut = true;
     ++authOperation;
 
-    // Make the local UI logged-out state authoritative BEFORE any network call.
+    // Make the browser/UI logged-out immediately. Do not wait for Supabase or a refresh.
     currentUser = null;
     markLoggedOut();
     closeAuth();
     resetAccountButton();
-
-    // Never wait for Supabase before closing the UI.
-    try {
-      if (enabled && client) await client.auth.signOut({ scope: 'local' });
-    } catch (e) {
-      console.warn('Supabase local logout:', e);
-    }
-
+    try { window.dispatchEvent(new CustomEvent('dmp-logged-out')); } catch (e) {}
     clearAuthStorage();
-    currentUser = null;
-    loggingOut = false;
+
+    // Finish the Supabase local sign-out in the background.
+    if (enabled && client) {
+      Promise.resolve(client.auth.signOut({ scope: 'local' }))
+        .catch(e => console.warn('Supabase local logout:', e))
+        .finally(() => {
+          clearAuthStorage();
+          currentUser = null;
+          loggingOut = false;
+        });
+    } else {
+      loggingOut = false;
+    }
   }
 
   window.DMP_logout = logoutNow;
@@ -143,15 +147,12 @@
 
     const logoutBtn = $('logoutBtn');
     if (logoutBtn) {
-      const doLogout = e => {
+      logoutBtn.onclick = e => {
         e.preventDefault();
         e.stopPropagation();
-        closeAuth();
-        void logoutNow();
+        logoutNow();
         return false;
       };
-      logoutBtn.onclick = doLogout;
-      logoutBtn.addEventListener('pointerup', doLogout, { passive: false });
     }
   }
 
