@@ -35,6 +35,25 @@
     el.classList.toggle('ok', ok);
   }
 
+  function clearSupabaseBrowserSession() {
+    // Supabase v2 normally stores the session under sb-*-auth-token.
+    // Clear matching browser entries as a final local safety net so a refresh
+    // cannot restore the old account after logout.
+    try {
+      const stores = [window.localStorage, window.sessionStorage];
+      for (const store of stores) {
+        const keys = [];
+        for (let i = 0; i < store.length; i++) {
+          const k = store.key(i);
+          if (k && (/^sb-.*-auth-token$/i.test(k) || /supabase.*auth.*token/i.test(k))) keys.push(k);
+        }
+        keys.forEach(k => store.removeItem(k));
+      }
+    } catch (e) {
+      console.warn('Could not clear browser auth storage:', e);
+    }
+  }
+
   function ensureUi() {
     if ($('accountArea')) return;
     const nav = document.querySelector('.nav');
@@ -85,38 +104,36 @@
     else $('authEmail')?.focus();
   }
 
-  // Logout deliberately uses the exact same UI close path as the × button.
-  // The cloud sign-out runs only after the modal is already closed.
-  function logoutNow() {
+  async function logoutNow() {
     if (loggingOut) return;
     loggingOut = true;
     ++authOperation;
     currentUser = null;
 
-    // Immediate local UI result — this happens before any Supabase promise.
+    // UI changes immediately, exactly like the × button.
     closeAuth();
     resetAccountButton();
     emit('dmp-logged-out');
 
-    // Background cleanup only. It can never reopen the modal or show login status.
-    if (enabled && client) {
-      client.auth.signOut({ scope: 'local' })
-        .catch(err => console.error('Logout error:', err))
-        .finally(() => { loggingOut = false; });
-    } else {
+    try {
+      if (enabled && client) {
+        // Remove the local session first. This must not wait for the network.
+        await client.auth.signOut({ scope: 'local' });
+      }
+    } catch (err) {
+      console.warn('Supabase local signOut:', err);
+    } finally {
+      // Guaranteed browser-side cleanup: refreshing the page must stay logged out.
+      clearSupabaseBrowserSession();
+      currentUser = null;
       loggingOut = false;
     }
   }
 
   function showAccount() {
     if (!currentUser || loggingOut) return;
-    const note = $('authNote');
-    const actions = $('authActions');
-    const reset = $('resetBtn');
-    const email = $('authEmail');
-    const pass = $('authPassword');
+    const note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword');
     if (!note || !actions || !reset || !email || !pass) return;
-
     note.textContent = `مسجل الدخول: ${currentUser.email}`;
     email.style.display = 'none';
     pass.style.display = 'none';
@@ -125,23 +142,18 @@
 
     const sync = $('syncNow');
     if (sync) sync.onclick = async function (e) {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       if (loggingOut) return;
       await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
       if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true);
     };
 
     const logout = $('logoutBtn');
-    if (logout) {
-      // One and only one handler. No event delegation or capture handler.
-      logout.onclick = function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        logoutNow();
-        return false;
-      };
-    }
+    if (logout) logout.onclick = function (e) {
+      e.preventDefault(); e.stopPropagation();
+      logoutNow();
+      return false;
+    };
   }
 
   window.DMP_logout = logoutNow;
@@ -217,10 +229,7 @@
       if (loggingOut) return;
       currentUser = session?.user || null;
       if (currentUser) showAccount();
-      else {
-        closeAuth();
-        resetAccountButton();
-      }
+      else { closeAuth(); resetAccountButton(); }
     });
   });
 })();
