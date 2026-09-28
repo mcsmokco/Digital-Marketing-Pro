@@ -57,7 +57,6 @@
   function closeAuth() {
     const m = document.getElementById('authModal');
     if (!m) return;
-    // Force-close the modal immediately; this does not depend on Supabase/network.
     m.classList.remove('show');
     m.setAttribute('aria-hidden', 'true');
     m.style.display = 'none';
@@ -92,21 +91,29 @@
   async function signOut() {
     if (loggingOut) return;
     loggingOut = true;
-    // FIRST: close the visible modal and reset the account button synchronously.
     showLoggedOut();
     closeAuth();
-    // Also remove any possible inline/show state left by an older cached script.
-    const m = document.getElementById('authModal');
-    if (m) { m.classList.remove('show'); m.style.display = 'none'; m.setAttribute('aria-hidden', 'true'); }
-    // SECOND: end the Supabase local session. Network errors cannot keep the modal open.
+    window.dispatchEvent(new CustomEvent('dmp-logged-out'));
     try {
       if (enabled && client) await client.auth.signOut({ scope: 'local' });
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
       loggingOut = false;
+      showLoggedOut();
+      closeAuth();
     }
   }
+
+  document.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('#logoutBtn');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    signOut();
+  }, true);
+
+  window.DMP_logout = signOut;
 
   async function signIn() {
     if (!enabled) return setStatus(configMessage);
