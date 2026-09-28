@@ -44,6 +44,7 @@
     area.className = 'account-area';
     area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>';
     nav.insertBefore(area, $('themeBtn'));
+
     const modal = document.createElement('div');
     modal.id = 'authModal';
     modal.className = 'auth-modal';
@@ -60,6 +61,7 @@
       <p class="auth-status" id="authStatus"></p>
     </div>`;
     document.body.appendChild(modal);
+
     $('accountBtn').onclick = openAuth;
     $('authClose').onclick = closeAuth;
     $('loginBtn').onclick = signIn;
@@ -79,57 +81,70 @@
     modal.classList.add('show');
     modal.setAttribute('aria-hidden', 'false');
     if (!enabled) return setStatus('الحسابات السحابية غير مفعلة بعد.');
-    if (currentUser && !loggingOut) showAccount(); else $('authEmail')?.focus();
+    if (currentUser && !loggingOut) showAccount();
+    else $('authEmail')?.focus();
+  }
+
+  // Logout deliberately uses the exact same UI close path as the × button.
+  // The cloud sign-out runs only after the modal is already closed.
+  function logoutNow() {
+    if (loggingOut) return;
+    loggingOut = true;
+    ++authOperation;
+    currentUser = null;
+
+    // Immediate local UI result — this happens before any Supabase promise.
+    closeAuth();
+    resetAccountButton();
+    emit('dmp-logged-out');
+
+    // Background cleanup only. It can never reopen the modal or show login status.
+    if (enabled && client) {
+      client.auth.signOut({ scope: 'local' })
+        .catch(err => console.error('Logout error:', err))
+        .finally(() => { loggingOut = false; });
+    } else {
+      loggingOut = false;
+    }
   }
 
   function showAccount() {
     if (!currentUser || loggingOut) return;
-    const note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword');
+    const note = $('authNote');
+    const actions = $('authActions');
+    const reset = $('resetBtn');
+    const email = $('authEmail');
+    const pass = $('authPassword');
     if (!note || !actions || !reset || !email || !pass) return;
+
     note.textContent = `مسجل الدخول: ${currentUser.email}`;
     email.style.display = 'none';
     pass.style.display = 'none';
     reset.style.display = 'none';
-    actions.innerHTML = '<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button" data-auth-action="logout">تسجيل الخروج</button>';
-    $('syncNow').onclick = async e => { e.preventDefault(); e.stopPropagation(); await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}')); if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true); };
-    $('logoutBtn').onclick = e => { e.preventDefault(); e.stopImmediatePropagation(); doLogout(); return false; };
+    actions.innerHTML = '<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>';
+
+    const sync = $('syncNow');
+    if (sync) sync.onclick = async function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (loggingOut) return;
+      await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
+      if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true);
+    };
+
+    const logout = $('logoutBtn');
+    if (logout) {
+      // One and only one handler. No event delegation or capture handler.
+      logout.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        logoutNow();
+        return false;
+      };
+    }
   }
 
-  function doLogout() {
-    if (loggingOut) return false;
-    loggingOut = true;
-    authOperation++;
-    currentUser = null;
-    closeAuth();
-    resetAccountButton();
-    emit('dmp-logged-out');
-    if (enabled && client) client.auth.signOut({ scope: 'local' }).catch(err => console.error('Logout error:', err)).finally(() => { loggingOut = false; });
-    else loggingOut = false;
-    return false;
-  }
-
-  // Capture BEFORE every normal click handler. This prevents an old/generic login handler from seeing logout.
-  document.addEventListener('pointerdown', e => {
-    const btn = e.target?.closest?.('#logoutBtn[data-auth-action="logout"]');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    doLogout();
-  }, true);
-  document.addEventListener('pointerup', e => {
-    const btn = e.target?.closest?.('#logoutBtn[data-auth-action="logout"]');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }, true);
-  document.addEventListener('click', e => {
-    const btn = e.target?.closest?.('#logoutBtn[data-auth-action="logout"]');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }, true);
-
-  window.DMP_logout = doLogout;
+  window.DMP_logout = logoutNow;
   window.DMP_closeAuth = closeAuth;
   window.DMP_openAuth = openAuth;
   window.DMP_saveState = saveProgress;
@@ -138,7 +153,8 @@
   async function signIn() {
     if (loggingOut || !enabled) return;
     const op = ++authOperation;
-    const email = $('authEmail')?.value.trim(), password = $('authPassword')?.value || '';
+    const email = $('authEmail')?.value.trim();
+    const password = $('authPassword')?.value || '';
     if (!email || !password) return setStatus('دخل البريد الإلكتروني وكلمة المرور.');
     setStatus('جاري تسجيل الدخول...');
     const { error } = await client.auth.signInWithPassword({ email, password });
@@ -150,7 +166,8 @@
   async function signUp() {
     if (loggingOut || !enabled) return;
     const op = ++authOperation;
-    const email = $('authEmail')?.value.trim(), password = $('authPassword')?.value || '';
+    const email = $('authEmail')?.value.trim();
+    const password = $('authPassword')?.value || '';
     if (!email || password.length < 6) return setStatus('استعمل بريد صحيح وكلمة مرور من 6 أحرف على الأقل.');
     setStatus('جاري إنشاء الحساب...');
     const { data, error } = await client.auth.signUp({ email, password });
@@ -173,8 +190,12 @@
     if (!enabled || !user) return;
     const { data, error } = await client.from('course_progress').select('state').eq('user_id', user.id).maybeSingle();
     if (error || loggingOut || !currentUser) return;
-    if (data?.state) { localStorage.setItem('dmp-state', JSON.stringify(data.state)); emit('dmp-cloud-state', { state: data.state }); }
-    else await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
+    if (data?.state) {
+      localStorage.setItem('dmp-state', JSON.stringify(data.state));
+      emit('dmp-cloud-state', { state: data.state });
+    } else {
+      await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
+    }
   }
 
   async function saveProgress(state) {
@@ -188,11 +209,18 @@
     const { data } = await client.auth.getSession();
     if (loggingOut) return;
     currentUser = data.session?.user || null;
-    if (currentUser) { showAccount(); loadProgress(currentUser).catch(() => {}); }
+    if (currentUser) {
+      showAccount();
+      loadProgress(currentUser).catch(() => {});
+    }
     client.auth.onAuthStateChange((_event, session) => {
       if (loggingOut) return;
       currentUser = session?.user || null;
-      if (currentUser) showAccount(); else { closeAuth(); resetAccountButton(); }
+      if (currentUser) showAccount();
+      else {
+        closeAuth();
+        resetAccountButton();
+      }
     });
   });
 })();
