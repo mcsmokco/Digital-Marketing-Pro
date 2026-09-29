@@ -5,8 +5,11 @@
   const client = enabled ? window.supabase.createClient(url, key) : null;
   const $ = id => document.getElementById(id);
 
-  // IMPORTANT: This is only a first protection layer. The real admin role must be enforced with Supabase RLS/role data before exposing private data.
-  const ADMIN_EMAILS = [];
+  function hasAdminRole(user) {
+    return typeof window.DMP_HAS_ADMIN_ROLE === 'function'
+      ? window.DMP_HAS_ADMIN_ROLE(user)
+      : false;
+  }
 
   async function init() {
     if (!enabled) return deny('Supabase غير مفعّل.');
@@ -14,7 +17,7 @@
     if (error || !data.session?.user) return deny('خاصك تسجل الدخول أولاً.');
     const user = data.session.user;
     $('adminEmail').textContent = user.email || 'Admin';
-    if (!ADMIN_EMAILS.includes((user.email || '').toLowerCase())) return deny('هذا الحساب ما عندوش صلاحية Admin حالياً.');
+    if (!hasAdminRole(user)) return deny('هذا الحساب ما عندوش صلاحية Admin. خاص role = admin في Supabase.');
     $('adminContent').hidden = false;
     await loadStats();
   }
@@ -28,7 +31,8 @@
   }
 
   async function loadStats() {
-    // Do not query auth.users from the browser. Supabase Auth users should be exposed through a secure server-side/RLS-safe table later.
+    // Keep statistics disabled until dedicated admin-safe tables/RLS are configured.
+    // Never query auth.users directly from the browser client.
     $('usersCount').textContent = '—';
     $('premiumCount').textContent = '—';
   }
