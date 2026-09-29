@@ -1,0 +1,3 @@
+Digital Marketing Pro — backup marker before Admin Dashboard phase.
+Existing main site, HTTPS, auth, Premium section and course files are preserved in Git history.
+Admin Dashboard is being added as separate files and is not linked into the public navigation yet.
