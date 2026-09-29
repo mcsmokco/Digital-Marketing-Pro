@@ -99,14 +99,12 @@
     if (loggingOut) return;
     loggingOut = true;
     ++authOperation;
-
     currentUser = null;
     markLoggedOut();
     closeAuth();
     resetAccountButton();
     try { window.dispatchEvent(new CustomEvent('dmp-logged-out')); } catch (e) {}
     clearAuthStorage();
-
     if (enabled && client) {
       Promise.resolve(client.auth.signOut({ scope: 'local' }))
         .catch(e => console.warn('Supabase local logout:', e))
@@ -115,9 +113,7 @@
           currentUser = null;
           loggingOut = false;
         });
-    } else {
-      loggingOut = false;
-    }
+    } else loggingOut = false;
   }
 
   window.DMP_logout = logoutNow;
@@ -134,7 +130,6 @@
     pass.style.display = 'none';
     reset.style.display = 'none';
     actions.innerHTML = '<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>';
-
     $('syncNow').onclick = async e => {
       e.preventDefault();
       e.stopPropagation();
@@ -142,16 +137,8 @@
       await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
       if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true);
     };
-
     const logoutBtn = $('logoutBtn');
-    if (logoutBtn) {
-      logoutBtn.onclick = e => {
-        e.preventDefault();
-        e.stopPropagation();
-        logoutNow();
-        return false;
-      };
-    }
+    if (logoutBtn) logoutBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); logoutNow(); return false; };
   }
 
   async function signIn() {
@@ -191,9 +178,7 @@
       const { data, error } = await client.auth.signUp({
         email: e,
         password: p,
-        options: {
-          emailRedirectTo: `${window.location.origin}${window.location.pathname}`
-        }
+        options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` }
       });
       if (op !== authOperation || loggingOut) return;
       if (error) return setStatus(error.message);
@@ -223,9 +208,7 @@
     if (data?.state) {
       localStorage.setItem('dmp-state', JSON.stringify(data.state));
       window.dispatchEvent(new CustomEvent('dmp-cloud-state', { detail: { state: data.state } }));
-    } else {
-      await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
-    }
+    } else await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}'));
   }
 
   async function saveProgress(state) {
@@ -259,10 +242,7 @@
       }
       currentUser = session?.user || null;
       if (currentUser) showAccount();
-      else {
-        closeAuth();
-        resetAccountButton();
-      }
+      else { closeAuth(); resetAccountButton(); }
     });
   });
 })();
