@@ -100,7 +100,6 @@
     loggingOut = true;
     ++authOperation;
 
-    // Make the browser/UI logged-out immediately. Do not wait for Supabase or a refresh.
     currentUser = null;
     markLoggedOut();
     closeAuth();
@@ -108,7 +107,6 @@
     try { window.dispatchEvent(new CustomEvent('dmp-logged-out')); } catch (e) {}
     clearAuthStorage();
 
-    // Finish the Supabase local sign-out in the background.
     if (enabled && client) {
       Promise.resolve(client.auth.signOut({ scope: 'local' }))
         .catch(e => console.warn('Supabase local logout:', e))
@@ -189,13 +187,24 @@
     const op = ++authOperation, e = $('authEmail')?.value.trim(), p = $('authPassword')?.value || '';
     if (!e || p.length < 6) return setStatus('استعمل بريد صحيح وكلمة مرور من 6 أحرف على الأقل.');
     setStatus('جاري إنشاء الحساب...');
-    const { data, error } = await client.auth.signUp({ email: e, password: p });
-    if (op !== authOperation || loggingOut) return;
-    if (error) return setStatus(error.message);
-    if (!data.session) return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم سجل الدخول.', true);
-    currentUser = data.user || data.session.user;
-    showAccount();
-    closeAuth();
+    try {
+      const { data, error } = await client.auth.signUp({
+        email: e,
+        password: p,
+        options: {
+          emailRedirectTo: `${window.location.origin}${window.location.pathname}`
+        }
+      });
+      if (op !== authOperation || loggingOut) return;
+      if (error) return setStatus(error.message);
+      if (!data.session) return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم ارجع للموقع لتسجيل الدخول.', true);
+      currentUser = data.user || data.session.user;
+      showAccount();
+      closeAuth();
+    } catch (err) {
+      if (op !== authOperation || loggingOut) return;
+      setStatus(err?.message || 'وقع خطأ أثناء إنشاء الحساب. حاول مرة أخرى.');
+    }
   }
 
   async function resetPassword() {
