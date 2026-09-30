@@ -74,6 +74,13 @@
       const { data, error } = await client.from('profiles').select('id,email,role,premium').eq('id', user.id).maybeSingle();
       if (!error && data) currentProfile = data;
     } catch (e) {}
+    // Fallback to the secure RPC when profile SELECT is restricted by RLS.
+    if (!currentProfile) {
+      try {
+        const { data: role, error: roleError } = await client.rpc('current_profile_role');
+        if (!roleError) currentProfile = { id: user.id, email: user.email, role: role || 'user', premium: false };
+      } catch (e) {}
+    }
     return currentProfile;
   }
   function showAccount() {
