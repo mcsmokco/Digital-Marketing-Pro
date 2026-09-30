@@ -11,7 +11,7 @@
 
   function applyGate() {
     const cards = premiumModules();
-    const hasPremium = Boolean(profile?.premium) || (typeof window.DMP_ROLE_LEVEL === 'function' && window.DMP_ROLE_LEVEL(profile?.role) >= 1);
+    const hasPremium = profile?.premium === true;
     cards.forEach((card) => {
       card.classList.toggle('premium-locked', !hasPremium);
       const button = card.querySelector('.openLesson');
@@ -40,7 +40,6 @@
     applyGate();
   }
 
-  const originalOpenModule = window.openModule;
   const installClickGuard = () => {
     document.querySelector('#modules')?.addEventListener('click', (e) => {
       const button = e.target.closest('.openLesson');
