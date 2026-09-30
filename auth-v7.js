@@ -105,6 +105,11 @@
     resetAccountButton();
     try { window.dispatchEvent(new CustomEvent('dmp-logged-out')); } catch (e) {}
     clearAuthStorage();
+
+    // Force a full page refresh immediately after logout so the old account UI
+    // cannot remain visible until the user manually refreshes the browser.
+    setTimeout(() => window.location.reload(), 100);
+
     if (enabled && client) {
       Promise.resolve(client.auth.signOut({ scope: 'local' }))
         .catch(e => console.warn('Supabase local logout:', e))
