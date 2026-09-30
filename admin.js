@@ -5,8 +5,8 @@
   const client = enabled ? window.supabase.createClient(url, key) : null;
   const $ = id => document.getElementById(id);
 
-  function roleOf(user) {
-    return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(user) : 'user';
+  function roleOf(profile) {
+    return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(profile) : 'user';
   }
   function levelOf(role) {
     return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
@@ -15,14 +15,24 @@
     return `${window.DMP_ROLE_ICONS?.[role] || '👤'} ${window.DMP_ROLE_LABELS?.[role] || role}`;
   }
 
+  async function getCurrentProfile(user) {
+    const { data, error } = await client.from('profiles').select('id,email,role,premium').eq('id', user.id).maybeSingle();
+    if (error) throw error;
+    return data || { id: user.id, email: user.email, role: 'user', premium: false };
+  }
+
   async function init() {
     if (!enabled) return deny('Supabase غير مفعّل.');
     const { data, error } = await client.auth.getSession();
     if (error || !data.session?.user) return deny('خاصك تسجل الدخول أولاً.');
-    const user = data.session.user;
-    const actorRole = roleOf(user);
-    $('adminEmail').textContent = `${labelOf(actorRole)} · ${user.email || ''}`;
-    if (levelOf(actorRole) < 2) return deny('هذه اللوحة مخصصة لـ Administrator وما فوق.');
+
+    let profile;
+    try { profile = await getCurrentProfile(data.session.user); }
+    catch (e) { return deny('تعذر التحقق من صلاحيات الحساب.'); }
+
+    const actorRole = roleOf(profile);
+    $('adminEmail').textContent = `${labelOf(actorRole)} · ${profile.email || data.session.user.email || ''}`;
+    if (levelOf(actorRole) < 2) return deny('هذه اللوحة مخصصة لـ Administrateur وما فوق.');
     $('adminContent').hidden = false;
     await loadStats();
     await loadUsers(actorRole);
@@ -48,11 +58,8 @@
     const currentLevel = levelOf(currentRole);
     const canManage = actorLevel >= 2 && currentLevel < actorLevel && currentRole !== 'owner';
     if (!canManage) return `<span class="role-badge">${labelOf(currentRole)}</span>`;
-
     const roles = typeof window.DMP_ASSIGNABLE_ROLES === 'function' ? window.DMP_ASSIGNABLE_ROLES(actorRole) : [];
-    return `<select class="role-select" aria-label="دور المستخدم">${roles.map(role =>
-      `<option value="${role}" ${role === currentRole ? 'selected' : ''}>${labelOf(role)}</option>`
-    ).join('')}</select>`;
+    return `<select class="role-select" aria-label="دور المستخدم">${roles.map(role => `<option value="${role}" ${role === currentRole ? 'selected' : ''}>${labelOf(role)}</option>`).join('')}</select>`;
   }
 
   async function loadUsers(actorRole) {
@@ -116,7 +123,12 @@
   document.addEventListener('DOMContentLoaded', () => {
     $('refreshUsers')?.addEventListener('click', async () => {
       const { data } = await client.auth.getSession();
-      if (data.session?.user) await loadUsers(roleOf(data.session.user));
+      if (data.session?.user) {
+        try {
+          const profile = await getCurrentProfile(data.session.user);
+          await loadUsers(roleOf(profile));
+        } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); }
+      }
     });
     init();
   });
