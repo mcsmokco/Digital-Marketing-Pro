@@ -1,4 +1,4 @@
-// Adds the Admin shortcut only for profiles with a management role.
+// Adds the Admin shortcut only for profiles with an administrative role.
 (() => {
   const url = window.DMP_SUPABASE_URL, key = window.DMP_SUPABASE_ANON_KEY;
   if (!url || !key || !window.supabase) return;
@@ -22,7 +22,7 @@
       } catch (e) {}
     }
     const level = typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
-    if (level < 2) return;
+    if (level < 1) return;
     const link = document.createElement('a');
     link.href = 'admin.html';
     link.dataset.adminLink = '1';
