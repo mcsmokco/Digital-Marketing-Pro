@@ -1,22 +1,29 @@
 # Admin setup — Digital Marketing Pro
 
-## Secure role assignment
+## نظام الصلاحيات الحالي
 
-The Admin dashboard authorizes users from Supabase `app_metadata.role` (`admin` or `super_admin`).
+المرجع الأساسي للصلاحيات هو `public.profiles.role` في Supabase:
 
-Do **not** put the Supabase `service_role` key in GitHub Pages or browser JavaScript.
+- `user` → مستخدم عادي
+- `moderateur` → صلاحيات مراقبة أساسية
+- `administrateur` → إدارة المستخدمين الأدنى
+- `co_admin` → إدارة الرتب الأدنى
+- `admin` → إدارة الرتب الأدنى
+- `owner` → المؤسس، محمي ولا يمكن تغييره من لوحة الإدارة
 
-To grant Admin to your own account, use a trusted server-side Supabase mechanism/dashboard to set:
+و`public.profiles.premium = true` هو المرجع لحالة Premium.
 
-```json
-{"role":"admin"}
-```
+## التفعيل الآمن
 
-Then sign out and sign back in so the new JWT contains the updated `app_metadata`.
+نفّذ ملف `supabase-profile-admin.sql` في Supabase SQL Editor مرة واحدة. هذا الملف ينشئ RLS المناسب وRPC باسم `admin_update_user`، لذلك لا يحتاج الموقع إلى `service_role` key.
 
-## Test
+**مهم:** لا تضع أبداً `service_role` key في GitHub Pages أو JavaScript داخل المتصفح.
 
-1. Sign in with the Admin account.
-2. Open `/admin.html`.
-3. Confirm the dashboard is visible.
-4. Sign in with a normal user and open `/admin.html`; access must be denied.
+## الاختبار
+
+1. سجّل الدخول بحساب الـ Owner.
+2. افتح الموقع؛ سيظهر رابط **🛡️ الإدارة** في القائمة.
+3. افتح لوحة الإدارة وتأكد أن المستخدمين يظهرون وأن تغيير `role` و`premium` يعمل.
+4. سجّل الدخول بحساب عادي وافتح `/admin.html` مباشرة؛ يجب أن تظهر رسالة **غير مصرح**.
+5. اجعل حساباً عادياً `premium = true` من لوحة الإدارة؛ يجب أن تفتح الوحدات من 4 إلى 12.
+6. اجعل `premium = false`؛ يجب أن تعود الوحدات المدفوعة إلى حالة القفل.
