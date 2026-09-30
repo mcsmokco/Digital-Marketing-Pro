@@ -40,7 +40,7 @@
     const nav = document.querySelector('.nav'); if (!nav) return;
     const area = document.createElement('div'); area.id = 'accountArea'; area.className = 'account-area'; area.innerHTML = '<button class="account-btn" id="accountBtn" type="button">👤 حسابي</button>'; nav.insertBefore(area, $('themeBtn'));
     const modal = document.createElement('div'); modal.id = 'authModal'; modal.className = 'auth-modal'; modal.setAttribute('aria-hidden', 'true'); modal.hidden = true;
-    modal.innerHTML = `<div class="auth-box" role="dialog" aria-modal="true"><button class="auth-close" id="authClose" type="button">×</button><span class="eyebrow">DIGITAL MARKETING PRO</span><h2>حساب المتعلم</h2><p class="auth-note" id="authNote">سجّل الدخول لحفظ تقدمك على أي جهاز.</p><label>البريد الإلكتروني<input id="authEmail" type="email"></label><label>كلمة المرور<input id="authPassword" type="password"></label><div class="auth-actions" id="authActions"><button class="btn primary" id="loginBtn" type="button">تسجيل الدخول</button><button class="btn ghost" id="signupBtn" type="button">إنشاء حساب</button></div><button class="auth-link" id="resetBtn" type="button">نسيت كلمة المرور؟</button><p class="auth-status" id="authStatus"></p></div>`;
+    modal.innerHTML = `<div class="auth-box" role="dialog" aria-modal="true"><button class="auth-close" id="authClose" type="button">×</button><span class="eyebrow">DIGITAL MARKETING PRO</span><h2 id="accountTitle">حسابي</h2><p class="auth-note" id="authNote">سجّل الدخول لحفظ تقدمك على أي جهاز.</p><label>البريد الإلكتروني<input id="authEmail" type="email"></label><label>كلمة المرور<input id="authPassword" type="password"></label><div class="auth-actions" id="authActions"><button class="btn primary" id="loginBtn" type="button">تسجيل الدخول</button><button class="btn ghost" id="signupBtn" type="button">إنشاء حساب</button></div><button class="auth-link" id="resetBtn" type="button">نسيت كلمة المرور؟</button><p class="auth-status" id="authStatus"></p></div>`;
     document.body.appendChild(modal);
     $('accountBtn').onclick = openAuth; $('authClose').onclick = closeAuth; $('loginBtn').onclick = signIn; $('signupBtn').onclick = signUp; $('resetBtn').onclick = resetPassword;
     modal.addEventListener('click', e => { if (e.target === modal) closeAuth(); });
@@ -59,14 +59,10 @@
   }
   window.DMP_logout = logoutNow; window.DMP_closeAuth = closeAuth; window.DMP_openAuth = openAuth; window.DMP_cloudEnabled = enabled;
   function getRole(user) {
-    if (currentProfile && (!user || currentProfile.id === user.id)) {
-      return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(currentProfile) : (currentProfile.role || 'user');
-    }
+    if (currentProfile && (!user || currentProfile.id === user.id)) return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(currentProfile) : (currentProfile.role || 'user');
     return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(user) : 'user';
   }
-  function roleLevel(role) {
-    return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
-  }
+  function roleLevel(role) { return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0; }
   async function loadCurrentProfile(user) {
     currentProfile = null;
     if (!enabled || !user) return null;
@@ -74,24 +70,24 @@
       const { data, error } = await client.from('profiles').select('id,email,role,premium').eq('id', user.id).maybeSingle();
       if (!error && data) currentProfile = data;
     } catch (e) {}
-    // Fallback to the secure RPC when profile SELECT is restricted by RLS.
     if (!currentProfile) {
-      try {
-        const { data: role, error: roleError } = await client.rpc('current_profile_role');
-        if (!roleError) currentProfile = { id: user.id, email: user.email, role: role || 'user', premium: false };
-      } catch (e) {}
+      try { const { data: role, error: roleError } = await client.rpc('current_profile_role'); if (!roleError) currentProfile = { id: user.id, email: user.email, role: role || 'user', premium: false }; } catch (e) {}
     }
     return currentProfile;
   }
   function showAccount() {
     if (!currentUser || loggingOut || forcedLoggedOut()) return;
-    const note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword'); if (!note || !actions || !reset || !email || !pass) return;
+    const note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword'), title = $('accountTitle');
+    if (!note || !actions || !reset || !email || !pass) return;
     setStatus('');
     note.textContent = `مسجل الدخول: ${currentUser.email}`; email.style.display = 'none'; pass.style.display = 'none'; reset.style.display = 'none';
     const role = getRole(currentUser);
-    const isManager = roleLevel(role) >= 2;
+    const level = roleLevel(role);
     const roleLabel = window.DMP_ROLE_LABELS?.[role] || role;
     const roleIcon = window.DMP_ROLE_ICONS?.[role] || '👤';
+    const accountTitle = level >= 1 ? `${roleIcon} حساب ${roleLabel}` : 'حساب المتعلم';
+    if (title) title.textContent = accountTitle;
+    const isManager = level >= 1;
     actions.innerHTML = `${isManager ? `<button class="btn primary" id="adminBtn" type="button">${roleIcon} لوحة الإدارة · ${roleLabel}</button>` : ''}<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>`;
     $('adminBtn')?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); window.location.href = 'admin.html'; });
     $('syncNow').onclick = async e => { e.preventDefault(); e.stopPropagation(); if (loggingOut) return; await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}')); if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true); };
@@ -99,8 +95,7 @@
   }
   function showPasswordRecovery() {
     if (!enabled || loggingOut) return;
-    ensureUi();
-    const m = $('authModal'), note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword');
+    ensureUi(); const m = $('authModal'), note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword');
     if (!m || !note || !actions || !reset || !email || !pass) return;
     m.hidden = false; m.style.display = 'grid'; m.style.visibility = 'visible'; m.style.opacity = '1'; m.style.pointerEvents = 'auto'; m.classList.add('show'); m.setAttribute('aria-hidden', 'false');
     note.textContent = 'اختار كلمة مرور جديدة لحسابك 🔐'; email.style.display = 'none'; pass.style.display = 'block'; pass.value = ''; reset.style.display = 'none';
@@ -116,7 +111,7 @@
     try { const { error } = await client.auth.updateUser({ password: pass }); if (error) return setStatus(error.message); setStatus('تم تغيير كلمة المرور بنجاح ✅', true); setTimeout(() => { if (!loggingOut) showAccount(); }, 900); } catch (err) { setStatus(err?.message || 'تعذر تغيير كلمة المرور. حاول مرة أخرى.'); }
   }
   async function signIn() {
-    if (loggingOut || !enabled) return; clearLoggedOut(); const op = ++authOperation; const e = $('authEmail')?.value.trim(), p = $('authPassword')?.value || '';
+    if (loggingOut || !enabled) return; clearLoggedOut(); const op = ++authOperation, e = $('authEmail')?.value.trim(), p = $('authPassword')?.value || '';
     if (!e || !p) return setStatus('دخل البريد الإلكتروني وكلمة المرور.'); setStatus('جاري تسجيل الدخول...');
     try { const result = await Promise.race([client.auth.signInWithPassword({ email: e, password: p }), new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 15000))]); if (op !== authOperation || loggingOut) return; if (result?.timeout) return setStatus('تعذر الاتصال بخدمة تسجيل الدخول. حاول مرة أخرى.'); const { data, error } = result; if (error) return setStatus(error.message); currentUser = data?.user || data?.session?.user || null; if (!currentUser) return setStatus('تم تسجيل الدخول لكن لم يتم استلام جلسة الحساب. أعد المحاولة.'); await loadCurrentProfile(currentUser); showAccount(); closeAuth(); loadProgress(currentUser).catch(() => {}); } catch (err) { if (op !== authOperation || loggingOut) return; setStatus(err?.message || 'وقع خطأ أثناء تسجيل الدخول. حاول مرة أخرى.'); }
   }
