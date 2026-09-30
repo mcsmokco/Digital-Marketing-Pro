@@ -60,8 +60,12 @@
   function showAccount() {
     if (!currentUser || loggingOut || forcedLoggedOut()) return;
     const note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword'); if (!note || !actions || !reset || !email || !pass) return;
+    // Clear any stale login status so "جاري تسجيل الدخول..." never survives a successful login or refresh.
+    setStatus('');
     note.textContent = `مسجل الدخول: ${currentUser.email}`; email.style.display = 'none'; pass.style.display = 'none'; reset.style.display = 'none';
-    actions.innerHTML = '<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>';
+    const isAdmin = currentUser?.app_metadata?.role === 'admin' || currentUser?.app_metadata?.role === 'super_admin';
+    actions.innerHTML = `${isAdmin ? '<button class="btn primary" id="adminBtn" type="button">🛡️ لوحة الإدارة</button>' : ''}<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>`;
+    $('adminBtn')?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); window.location.href = 'admin.html'; });
     $('syncNow').onclick = async e => { e.preventDefault(); e.stopPropagation(); if (loggingOut) return; await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}')); if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true); };
     const logoutBtn = $('logoutBtn'); if (logoutBtn) logoutBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); logoutNow(); return false; };
   }
