@@ -45,10 +45,8 @@
     const courses = $('courses'), certificates = $('certificates');
     if (courses) courses.querySelectorAll('button').forEach(b => { b.disabled = !can(actorRole, 2); });
     if (certificates) certificates.hidden = false;
-    const hierarchy = document.querySelector('.panel .course-row')?.closest('.panel');
-    if (hierarchy) hierarchy.querySelector('.muted')?.setAttribute('title', `Current role: ${labelOf(actorRole)}`);
     const msg = $('usersMessage');
-    if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى.' : coAdmin ? '💎 Co Admin: إدارة الرتب الأدنى فقط.' : moderator ? '🔧 Modérateur: صلاحيات إشراف محدودة، بدون تغيير الرتب.' : '';
+    if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى.' : coAdmin ? '💎 Coadmin: إدارة الرتب الأدنى فقط.' : moderator ? '🔧 Moderateur: صلاحيات إشراف محدودة، بدون تغيير الرتب.' : '';
   }
 
   async function loadStats(actorRole) {
@@ -77,11 +75,16 @@
     if (error) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">تعذر تحميل المستخدمين.</td></tr>'; if (message) message.textContent = error.message; return; }
     if (!data?.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">ما كاين حتى مستخدم.</td></tr>'; return; }
     tbody.innerHTML = data.map(user => {
-      const currentRole = user.role || 'user', locked = currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole);
-      const premiumEditable = levelOf(actorRole) >= 2 && !locked;
-      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}"><td>${escapeHtml(user.email || '—')}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><button class="save-user small-btn" type="button" ${locked || levelOf(actorRole) < 2 ? 'disabled' : ''}>حفظ</button></td></tr>`;
+      const currentRole = user.role || 'user';
+      const currentLevel = levelOf(currentRole);
+      const actorLevel = levelOf(actorRole);
+      const locked = currentRole === 'owner' || currentLevel >= actorLevel;
+      const premiumEditable = actorLevel >= 2 && !locked;
+      const removable = ['owner','admin','co_admin'].includes(actorRole) && currentRole !== 'owner' && currentLevel < actorLevel;
+      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}"><td>${escapeHtml(user.email || '—')}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
     }).join('');
     tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'), actorRole)));
+    tbody.querySelectorAll('.remove-user').forEach(btn => btn.addEventListener('click', () => removeUser(btn.closest('tr'), actorRole)));
   }
 
   async function saveUser(row, actorRole) {
@@ -96,6 +99,27 @@
     if (error) { if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`; return; }
     if ($('usersMessage')) $('usersMessage').textContent = '✅ تم تحديث المستخدم بنجاح.';
     await loadStats(actorRole); await loadUsers(actorRole);
+  }
+
+  async function removeUser(row, actorRole) {
+    if (!row || !['owner','admin','co_admin'].includes(actorRole)) return;
+    const id = row.dataset.userId;
+    const email = row.querySelector('td')?.textContent?.trim() || 'هذا المستخدم';
+    const currentRole = row.dataset.currentRole || 'user';
+    if (currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
+    const confirmed = window.confirm(`⚠️ تأكيد إزالة العضو\n\n${email}\n\nسيتم حذف الحساب نهائياً ولا يمكن التراجع عن العملية.`);
+    if (!confirmed) return;
+    const btn = row.querySelector('.remove-user');
+    if (btn) { btn.disabled = true; btn.textContent = 'جاري الإزالة...'; }
+    const { error } = await client.rpc('admin_remove_user', { target_user_id: id });
+    if (error) {
+      if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`;
+      if (btn) { btn.disabled = false; btn.textContent = '🗑️ إزالة'; }
+      return;
+    }
+    if ($('usersMessage')) $('usersMessage').textContent = `✅ تمت إزالة ${email} نهائياً.`;
+    await loadStats(actorRole);
+    await loadUsers(actorRole);
   }
 
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
