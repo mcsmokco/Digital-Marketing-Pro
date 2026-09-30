@@ -1,0 +1,35 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    - cron: '17 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "Missing SUPABASE_URL or SUPABASE_ANON_KEY repository secrets."
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/supabase-response.txt -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${SUPABASE_URL}/rest/v1/profiles?select=id&limit=1")
+          echo "Supabase HTTP status: ${status}"
+          if [ "${status}" -lt 200 ] || [ "${status}" -ge 300 ]; then
+            cat /tmp/supabase-response.txt
+            exit 1
+          fi
+          echo "Supabase Keep Alive check completed successfully."
