@@ -24,7 +24,7 @@
     try { profile = await getCurrentProfile(data.session.user); } catch (e) { return deny('تعذر التحقق من صلاحيات الحساب.'); }
     const actorRole = roleOf(profile);
     $('adminEmail').textContent = `${labelOf(actorRole)} · ${profile.email || data.session.user.email || ''}`;
-    if (!can(actorRole, 2)) return deny('هذه اللوحة مخصصة لـ Administrateur وما فوق.');
+    if (!can(actorRole, 1)) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.');
     $('adminContent').hidden = false;
     applyRoleUi(actorRole);
     await loadStats(actorRole);
@@ -39,7 +39,7 @@
   }
 
   function applyRoleUi(actorRole) {
-    const admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = levelOf(actorRole) >= 5;
+    const moderator = can(actorRole, 1), admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = levelOf(actorRole) >= 5;
     document.querySelectorAll('[data-min-role]').forEach(el => { el.hidden = levelOf(actorRole) < Number(el.dataset.minRole); });
     document.querySelectorAll('[data-owner-only]').forEach(el => { el.hidden = !owner; });
     const courses = $('courses'), certificates = $('certificates');
@@ -48,7 +48,7 @@
     const hierarchy = document.querySelector('.panel .course-row')?.closest('.panel');
     if (hierarchy) hierarchy.querySelector('.muted')?.setAttribute('title', `Current role: ${labelOf(actorRole)}`);
     const msg = $('usersMessage');
-    if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات.' : admin ? '🛡️ إدارة المستخدمين والرتب الأدنى.' : coAdmin ? '💎 إدارة الرتب الأدنى فقط.' : '🔧 صلاحيات إشراف محدودة.';
+    if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى.' : coAdmin ? '💎 Co Admin: إدارة الرتب الأدنى فقط.' : moderator ? '🔧 Modérateur: صلاحيات إشراف محدودة، بدون تغيير الرتب.' : '';
   }
 
   async function loadStats(actorRole) {
@@ -79,7 +79,7 @@
     tbody.innerHTML = data.map(user => {
       const currentRole = user.role || 'user', locked = currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole);
       const premiumEditable = levelOf(actorRole) >= 2 && !locked;
-      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}"><td>${escapeHtml(user.email || '—')}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><button class="save-user small-btn" type="button" ${locked ? 'disabled' : ''}>حفظ</button></td></tr>`;
+      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}"><td>${escapeHtml(user.email || '—')}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><button class="save-user small-btn" type="button" ${locked || levelOf(actorRole) < 2 ? 'disabled' : ''}>حفظ</button></td></tr>`;
     }).join('');
     tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'), actorRole)));
   }
@@ -102,7 +102,7 @@
 
   $('logoutAdmin').addEventListener('click', async () => { if (client) await client.auth.signOut({ scope: 'local' }).catch(() => {}); location.href = 'index.html'; });
   document.addEventListener('DOMContentLoaded', () => {
-    $('refreshUsers')?.addEventListener('click', async () => { const { data } = await client.auth.getSession(); if (data.session?.user) { try { const profile = await getCurrentProfile(data.session.user); const role = roleOf(profile); applyRoleUi(role); await loadUsers(role); } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); } } });
+    $('refreshUsers')?.addEventListener('click', async () => { const { data } = await client.auth.getSession(); if (data.session?.user) { try { const profile = await getCurrentProfile(data.session.user); const role = roleOf(profile); if (levelOf(role) < 1) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.'); applyRoleUi(role); await loadUsers(role); } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); } } });
     init();
   });
 })();
