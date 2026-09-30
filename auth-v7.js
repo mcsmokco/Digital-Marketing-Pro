@@ -4,6 +4,7 @@
   const enabled = Boolean(url && key && window.supabase);
   const client = enabled ? window.supabase.createClient(url, key) : null;
   let currentUser = null;
+  let currentProfile = null;
   let loggingOut = false;
   let authOperation = 0;
   const LOGGED_OUT = 'dmp-force-logged-out';
@@ -52,16 +53,28 @@
   }
   function logoutNow() {
     if (loggingOut) return;
-    loggingOut = true; ++authOperation; currentUser = null; markLoggedOut(); clearAuthStorage(); closeAuth(); resetAccountButton();
+    loggingOut = true; ++authOperation; currentUser = null; currentProfile = null; markLoggedOut(); clearAuthStorage(); closeAuth(); resetAccountButton();
     try { window.dispatchEvent(new CustomEvent('dmp-logged-out')); } catch (e) {}
     window.location.reload();
   }
   window.DMP_logout = logoutNow; window.DMP_closeAuth = closeAuth; window.DMP_openAuth = openAuth; window.DMP_cloudEnabled = enabled;
   function getRole(user) {
+    if (currentProfile && (!user || currentProfile.id === user.id)) {
+      return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(currentProfile) : (currentProfile.role || 'user');
+    }
     return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(user) : 'user';
   }
   function roleLevel(role) {
     return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
+  }
+  async function loadCurrentProfile(user) {
+    currentProfile = null;
+    if (!enabled || !user) return null;
+    try {
+      const { data, error } = await client.from('profiles').select('id,email,role,premium').eq('id', user.id).maybeSingle();
+      if (!error && data) currentProfile = data;
+    } catch (e) {}
+    return currentProfile;
   }
   function showAccount() {
     if (!currentUser || loggingOut || forcedLoggedOut()) return;
@@ -98,12 +111,12 @@
   async function signIn() {
     if (loggingOut || !enabled) return; clearLoggedOut(); const op = ++authOperation; const e = $('authEmail')?.value.trim(), p = $('authPassword')?.value || '';
     if (!e || !p) return setStatus('دخل البريد الإلكتروني وكلمة المرور.'); setStatus('جاري تسجيل الدخول...');
-    try { const result = await Promise.race([client.auth.signInWithPassword({ email: e, password: p }), new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 15000))]); if (op !== authOperation || loggingOut) return; if (result?.timeout) return setStatus('تعذر الاتصال بخدمة تسجيل الدخول. حاول مرة أخرى.'); const { data, error } = result; if (error) return setStatus(error.message); currentUser = data?.user || data?.session?.user || null; if (!currentUser) return setStatus('تم تسجيل الدخول لكن لم يتم استلام جلسة الحساب. أعد المحاولة.'); showAccount(); closeAuth(); loadProgress(currentUser).catch(() => {}); } catch (err) { if (op !== authOperation || loggingOut) return; setStatus(err?.message || 'وقع خطأ أثناء تسجيل الدخول. حاول مرة أخرى.'); }
+    try { const result = await Promise.race([client.auth.signInWithPassword({ email: e, password: p }), new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 15000))]); if (op !== authOperation || loggingOut) return; if (result?.timeout) return setStatus('تعذر الاتصال بخدمة تسجيل الدخول. حاول مرة أخرى.'); const { data, error } = result; if (error) return setStatus(error.message); currentUser = data?.user || data?.session?.user || null; if (!currentUser) return setStatus('تم تسجيل الدخول لكن لم يتم استلام جلسة الحساب. أعد المحاولة.'); await loadCurrentProfile(currentUser); showAccount(); closeAuth(); loadProgress(currentUser).catch(() => {}); } catch (err) { if (op !== authOperation || loggingOut) return; setStatus(err?.message || 'وقع خطأ أثناء تسجيل الدخول. حاول مرة أخرى.'); }
   }
   async function signUp() {
     if (loggingOut || !enabled) return; clearLoggedOut(); const op = ++authOperation, e = $('authEmail')?.value.trim(), p = $('authPassword')?.value || '';
     if (!e || p.length < 6) return setStatus('استعمل بريد صحيح وكلمة مرور من 6 أحرف على الأقل.'); setStatus('جاري إنشاء الحساب...');
-    try { const { data, error } = await client.auth.signUp({ email: e, password: p, options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` } }); if (op !== authOperation || loggingOut) return; if (error) return setStatus(error.message); if (!data.session) return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم ارجع للموقع لتسجيل الدخول.', true); currentUser = data.user || data.session.user; showAccount(); closeAuth(); } catch (err) { if (op !== authOperation || loggingOut) return; setStatus(err?.message || 'وقع خطأ أثناء إنشاء الحساب. حاول مرة أخرى.'); }
+    try { const { data, error } = await client.auth.signUp({ email: e, password: p, options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` } }); if (op !== authOperation || loggingOut) return; if (error) return setStatus(error.message); if (!data.session) return setStatus('تم إنشاء الحساب. راجع بريدك لتأكيد الحساب ثم ارجع للموقع لتسجيل الدخول.', true); currentUser = data.user || data.session.user; await loadCurrentProfile(currentUser); showAccount(); closeAuth(); } catch (err) { if (op !== authOperation || loggingOut) return; setStatus(err?.message || 'وقع خطأ أثناء إنشاء الحساب. حاول مرة أخرى.'); }
   }
   async function resetPassword() {
     if (loggingOut || !enabled) return; const e = $('authEmail')?.value.trim(); if (!e) return setStatus('دخل البريد الإلكتروني أولاً.'); setStatus('جاري إرسال الرابط...'); const { error } = await client.auth.resetPasswordForEmail(e, { redirectTo: location.origin + location.pathname }); if (!loggingOut) setStatus(error ? error.message : 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك.', !error);
@@ -114,13 +127,13 @@
   }
   async function saveProgress(state) { if (!enabled || !currentUser || loggingOut || forcedLoggedOut()) return; await client.from('course_progress').upsert({ user_id: currentUser.id, state, updated_at: new Date().toISOString() }); }
   document.addEventListener('DOMContentLoaded', async () => {
-    ensureUi(); if (!enabled) return; if (forcedLoggedOut()) { currentUser = null; clearAuthStorage(); resetAccountButton(); closeAuth(); return; }
-    const { data } = await client.auth.getSession(); if (loggingOut || forcedLoggedOut()) return; currentUser = data.session?.user || null; if (currentUser) { showAccount(); loadProgress(currentUser).catch(() => {}); }
-    client.auth.onAuthStateChange((event, session) => {
-      if (loggingOut || forcedLoggedOut()) { currentUser = null; closeAuth(); resetAccountButton(); return; }
-      if (event === 'PASSWORD_RECOVERY') { currentUser = session?.user || currentUser; showPasswordRecovery(); return; }
+    ensureUi(); if (!enabled) return; if (forcedLoggedOut()) { currentUser = null; currentProfile = null; clearAuthStorage(); resetAccountButton(); closeAuth(); return; }
+    const { data } = await client.auth.getSession(); if (loggingOut || forcedLoggedOut()) return; currentUser = data.session?.user || null; if (currentUser) { await loadCurrentProfile(currentUser); showAccount(); loadProgress(currentUser).catch(() => {}); }
+    client.auth.onAuthStateChange(async (event, session) => {
+      if (loggingOut || forcedLoggedOut()) { currentUser = null; currentProfile = null; closeAuth(); resetAccountButton(); return; }
+      if (event === 'PASSWORD_RECOVERY') { currentUser = session?.user || currentUser; await loadCurrentProfile(currentUser); showPasswordRecovery(); return; }
       currentUser = session?.user || null;
-      if (currentUser) showAccount(); else { closeAuth(); resetAccountButton(); }
+      if (currentUser) { await loadCurrentProfile(currentUser); showAccount(); } else { currentProfile = null; closeAuth(); resetAccountButton(); }
     });
   });
 })();
