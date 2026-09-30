@@ -57,14 +57,22 @@
     window.location.reload();
   }
   window.DMP_logout = logoutNow; window.DMP_closeAuth = closeAuth; window.DMP_openAuth = openAuth; window.DMP_cloudEnabled = enabled;
+  function getRole(user) {
+    return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(user) : 'user';
+  }
+  function roleLevel(role) {
+    return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
+  }
   function showAccount() {
     if (!currentUser || loggingOut || forcedLoggedOut()) return;
     const note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword'); if (!note || !actions || !reset || !email || !pass) return;
-    // Clear any stale login status so "جاري تسجيل الدخول..." never survives a successful login or refresh.
     setStatus('');
     note.textContent = `مسجل الدخول: ${currentUser.email}`; email.style.display = 'none'; pass.style.display = 'none'; reset.style.display = 'none';
-    const isAdmin = currentUser?.app_metadata?.role === 'admin' || currentUser?.app_metadata?.role === 'super_admin';
-    actions.innerHTML = `${isAdmin ? '<button class="btn primary" id="adminBtn" type="button">🛡️ لوحة الإدارة</button>' : ''}<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>`;
+    const role = getRole(currentUser);
+    const isManager = roleLevel(role) >= 2;
+    const roleLabel = window.DMP_ROLE_LABELS?.[role] || role;
+    const roleIcon = window.DMP_ROLE_ICONS?.[role] || '👤';
+    actions.innerHTML = `${isManager ? `<button class="btn primary" id="adminBtn" type="button">${roleIcon} لوحة الإدارة · ${roleLabel}</button>` : ''}<button class="btn primary" id="syncNow" type="button">مزامنة التقدم ☁️</button><button class="btn ghost" id="logoutBtn" type="button">تسجيل الخروج</button>`;
     $('adminBtn')?.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); window.location.href = 'admin.html'; });
     $('syncNow').onclick = async e => { e.preventDefault(); e.stopPropagation(); if (loggingOut) return; await saveProgress(JSON.parse(localStorage.getItem('dmp-state') || '{}')); if (!loggingOut) setStatus('تمت مزامنة التقدم بنجاح ✅', true); };
     const logoutBtn = $('logoutBtn'); if (logoutBtn) logoutBtn.onclick = e => { e.preventDefault(); e.stopPropagation(); logoutNow(); return false; };
@@ -75,28 +83,17 @@
     const m = $('authModal'), note = $('authNote'), actions = $('authActions'), reset = $('resetBtn'), email = $('authEmail'), pass = $('authPassword');
     if (!m || !note || !actions || !reset || !email || !pass) return;
     m.hidden = false; m.style.display = 'grid'; m.style.visibility = 'visible'; m.style.opacity = '1'; m.style.pointerEvents = 'auto'; m.classList.add('show'); m.setAttribute('aria-hidden', 'false');
-    note.textContent = 'اختار كلمة مرور جديدة لحسابك 🔐';
-    email.style.display = 'none'; pass.style.display = 'block'; pass.value = '';
-    reset.style.display = 'none';
+    note.textContent = 'اختار كلمة مرور جديدة لحسابك 🔐'; email.style.display = 'none'; pass.style.display = 'block'; pass.value = ''; reset.style.display = 'none';
     actions.innerHTML = '<label style="display:block;margin-bottom:10px">تأكيد كلمة المرور<input id="authPasswordConfirm" type="password" autocomplete="new-password"></label><button class="btn primary" id="updatePasswordBtn" type="button">حفظ كلمة المرور الجديدة</button>';
-    $('updatePasswordBtn').onclick = updatePassword;
-    $('authPassword')?.focus();
+    $('updatePasswordBtn').onclick = updatePassword; $('authPassword')?.focus();
   }
   async function updatePassword() {
     if (!enabled || loggingOut) return;
-    const pass = $('authPassword')?.value || '';
-    const confirm = $('authPasswordConfirm')?.value || '';
+    const pass = $('authPassword')?.value || '', confirm = $('authPasswordConfirm')?.value || '';
     if (pass.length < 6) return setStatus('كلمة المرور خاصها تكون 6 أحرف على الأقل.');
     if (pass !== confirm) return setStatus('كلمتا المرور غير متطابقتين.');
     setStatus('جاري تحديث كلمة المرور...');
-    try {
-      const { error } = await client.auth.updateUser({ password: pass });
-      if (error) return setStatus(error.message);
-      setStatus('تم تغيير كلمة المرور بنجاح ✅', true);
-      setTimeout(() => { if (!loggingOut) showAccount(); }, 900);
-    } catch (err) {
-      setStatus(err?.message || 'تعذر تغيير كلمة المرور. حاول مرة أخرى.');
-    }
+    try { const { error } = await client.auth.updateUser({ password: pass }); if (error) return setStatus(error.message); setStatus('تم تغيير كلمة المرور بنجاح ✅', true); setTimeout(() => { if (!loggingOut) showAccount(); }, 900); } catch (err) { setStatus(err?.message || 'تعذر تغيير كلمة المرور. حاول مرة أخرى.'); }
   }
   async function signIn() {
     if (loggingOut || !enabled) return; clearLoggedOut(); const op = ++authOperation; const e = $('authEmail')?.value.trim(), p = $('authPassword')?.value || '';
