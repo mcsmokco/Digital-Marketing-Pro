@@ -5,10 +5,14 @@
   const client = enabled ? window.supabase.createClient(url, key) : null;
   const $ = id => document.getElementById(id);
 
-  function hasAdminRole(user) {
-    return typeof window.DMP_HAS_ADMIN_ROLE === 'function'
-      ? window.DMP_HAS_ADMIN_ROLE(user)
-      : false;
+  function roleOf(user) {
+    return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(user) : 'user';
+  }
+  function levelOf(role) {
+    return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
+  }
+  function labelOf(role) {
+    return `${window.DMP_ROLE_ICONS?.[role] || '👤'} ${window.DMP_ROLE_LABELS?.[role] || role}`;
   }
 
   async function init() {
@@ -16,11 +20,12 @@
     const { data, error } = await client.auth.getSession();
     if (error || !data.session?.user) return deny('خاصك تسجل الدخول أولاً.');
     const user = data.session.user;
-    $('adminEmail').textContent = user.email || 'Admin';
-    if (!hasAdminRole(user)) return deny('هذا الحساب ما عندوش صلاحية Admin. خاص role = admin في Supabase.');
+    const actorRole = roleOf(user);
+    $('adminEmail').textContent = `${labelOf(actorRole)} · ${user.email || ''}`;
+    if (levelOf(actorRole) < 2) return deny('هذه اللوحة مخصصة لـ Administrator وما فوق.');
     $('adminContent').hidden = false;
     await loadStats();
-    await loadUsers();
+    await loadUsers(actorRole);
   }
 
   function deny(message) {
@@ -38,14 +43,26 @@
     if (!premiumError) $('premiumCount').textContent = String(premiumCount ?? 0);
   }
 
-  async function loadUsers() {
+  function roleOptions(actorRole, currentRole) {
+    const actorLevel = levelOf(actorRole);
+    const currentLevel = levelOf(currentRole);
+    const canManage = actorLevel >= 2 && currentLevel < actorLevel && currentRole !== 'owner';
+    if (!canManage) return `<span class="role-badge">${labelOf(currentRole)}</span>`;
+
+    const roles = typeof window.DMP_ASSIGNABLE_ROLES === 'function' ? window.DMP_ASSIGNABLE_ROLES(actorRole) : [];
+    return `<select class="role-select" aria-label="دور المستخدم">${roles.map(role =>
+      `<option value="${role}" ${role === currentRole ? 'selected' : ''}>${labelOf(role)}</option>`
+    ).join('')}</select>`;
+  }
+
+  async function loadUsers(actorRole) {
     const tbody = $('usersList');
     const message = $('usersMessage');
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="4" class="empty-state">جاري تحميل المستخدمين...</td></tr>';
     const { data, error } = await client.from('profiles').select('id,email,role,premium,created_at').order('created_at', { ascending: false });
     if (error) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">خاصك تشغل supabase/admin_users.sql مرة واحدة في SQL Editor.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">تعذر تحميل المستخدمين.</td></tr>';
       if (message) message.textContent = error.message;
       return;
     }
@@ -54,20 +71,24 @@
       return;
     }
     tbody.innerHTML = data.map(user => `
-      <tr data-user-id="${escapeHtml(user.id)}">
+      <tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role || 'user')}">
         <td>${escapeHtml(user.email || '—')}</td>
-        <td><select class="role-select" aria-label="دور المستخدم"><option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="super_admin" ${user.role === 'super_admin' ? 'selected' : ''}>Super Admin</option></select></td>
+        <td>${roleOptions(actorRole, user.role || 'user')}</td>
         <td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''}><span>Premium</span></label></td>
-        <td><button class="save-user small-btn" type="button">حفظ</button></td>
+        <td><button class="save-user small-btn" type="button" ${levelOf(user.role || 'user') >= levelOf(actorRole) || user.role === 'owner' ? 'disabled' : ''}>حفظ</button></td>
       </tr>`).join('');
-    tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'))));
+    tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'), actorRole)));
   }
 
-  async function saveUser(row) {
+  async function saveUser(row, actorRole) {
     if (!row) return;
     const id = row.dataset.userId;
-    const role = row.querySelector('.role-select').value;
+    const currentRole = row.dataset.currentRole || 'user';
+    const roleSelect = row.querySelector('.role-select');
+    const role = roleSelect ? roleSelect.value : currentRole;
     const premium = row.querySelector('.premium-check').checked;
+    if (levelOf(actorRole) < 2 || currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
+
     const btn = row.querySelector('.save-user');
     btn.disabled = true;
     btn.textContent = '...';
@@ -75,12 +96,12 @@
     btn.disabled = false;
     btn.textContent = 'حفظ';
     if (error) {
-      if ($('usersMessage')) $('usersMessage').textContent = error.message;
+      if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`;
       return;
     }
     if ($('usersMessage')) $('usersMessage').textContent = '✅ تم تحديث المستخدم بنجاح.';
     await loadStats();
-    await loadUsers();
+    await loadUsers(actorRole);
   }
 
   function escapeHtml(value) {
@@ -93,7 +114,10 @@
   });
 
   document.addEventListener('DOMContentLoaded', () => {
-    $('refreshUsers')?.addEventListener('click', loadUsers);
+    $('refreshUsers')?.addEventListener('click', async () => {
+      const { data } = await client.auth.getSession();
+      if (data.session?.user) await loadUsers(roleOf(data.session.user));
+    });
     init();
   });
 })();
