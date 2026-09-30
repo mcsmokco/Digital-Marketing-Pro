@@ -19,17 +19,23 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
+
           if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
             echo "Missing SUPABASE_URL or SUPABASE_ANON_KEY repository secrets."
             exit 1
           fi
+
+          base_url="${SUPABASE_URL%/}"
           status=$(curl -sS -o /tmp/supabase-response.txt -w '%{http_code}' \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${SUPABASE_URL}/rest/v1/profiles?select=id&limit=1")
-          echo "Supabase HTTP status: ${status}"
+            "${base_url}/rest/v1/")
+
+          echo "Supabase REST API HTTP status: ${status}"
+
           if [ "${status}" -lt 200 ] || [ "${status}" -ge 300 ]; then
             cat /tmp/supabase-response.txt
             exit 1
           fi
+
           echo "Supabase Keep Alive check completed successfully."
