@@ -1,52 +1,66 @@
-// Digital Marketing Pro — hierarchical admin roles
-// UI checks are convenience only. Sensitive role changes are enforced by Supabase RPC/RLS.
+// Digital Marketing Pro — hierarchical authorization helpers.
+// These helpers are UI convenience only. Sensitive permissions are enforced by Supabase RLS/RPC.
 window.DMP_ROLES = Object.freeze({
   user: 0,
-  moderator: 1,
-  administrator: 2,
+  moderateur: 1,
+  administrateur: 2,
   co_admin: 3,
-  owner: 4
+  admin: 4,
+  owner: 5
 });
 
 window.DMP_ROLE_LABELS = Object.freeze({
   user: 'User',
-  moderator: 'Modérateur',
-  administrator: 'Administrator',
+  moderateur: 'Modérateur',
+  administrateur: 'Administrateur',
   co_admin: 'Co Admin',
+  admin: 'Admin',
   owner: 'Owner / Founder'
 });
 
 window.DMP_ROLE_ICONS = Object.freeze({
   user: '👤',
-  moderator: '🔧',
-  administrator: '🛡️',
+  moderateur: '🔧',
+  administrateur: '🛡️',
   co_admin: '💎',
+  admin: '👑',
   owner: '👑'
 });
 
 window.DMP_NORMALIZE_ROLE = function (role) {
-  // Legacy values are migrated to the new hierarchy.
-  if (role === 'admin' || role === 'super_admin') return 'owner';
-  return window.DMP_ROLES[role] !== undefined ? role : 'user';
+  const legacy = {
+    administrator: 'administrateur',
+    moderator: 'moderateur',
+    super_admin: 'owner'
+  };
+  const normalized = legacy[role] || role;
+  return window.DMP_ROLES[normalized] !== undefined ? normalized : 'user';
 };
 
-window.DMP_GET_ROLE = function (user) {
-  return window.DMP_NORMALIZE_ROLE(user?.app_metadata?.role);
+window.DMP_GET_ROLE = function (userOrProfile) {
+  return window.DMP_NORMALIZE_ROLE(userOrProfile?.role ?? userOrProfile?.app_metadata?.role);
 };
 
 window.DMP_ROLE_LEVEL = function (role) {
   return window.DMP_ROLES[window.DMP_NORMALIZE_ROLE(role)] ?? 0;
 };
 
-window.DMP_HAS_ADMIN_ROLE = function (user) {
-  return window.DMP_ROLE_LEVEL(window.DMP_GET_ROLE(user)) >= 2;
+window.DMP_HAS_ADMIN_ROLE = function (userOrProfile) {
+  return window.DMP_ROLE_LEVEL(window.DMP_GET_ROLE(userOrProfile)) >= 2;
+};
+
+window.DMP_HAS_MANAGEMENT_ROLE = function (userOrProfile) {
+  return window.DMP_ROLE_LEVEL(window.DMP_GET_ROLE(userOrProfile)) >= 2;
+};
+
+window.DMP_HAS_PREMIUM_ACCESS = function (userOrProfile) {
+  const role = window.DMP_GET_ROLE(userOrProfile);
+  return window.DMP_ROLE_LEVEL(role) >= 1 || userOrProfile?.premium === true;
 };
 
 window.DMP_CAN_MANAGE_ROLE = function (actorRole, targetRole) {
   const actor = window.DMP_ROLE_LEVEL(actorRole);
   const target = window.DMP_ROLE_LEVEL(targetRole);
-  // Owner can manage every lower role. Other management roles can only manage strictly lower roles.
-  // Moderator intentionally has no role-management power.
   return actor >= 2 && target < actor;
 };
 
