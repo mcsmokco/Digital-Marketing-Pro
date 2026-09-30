@@ -1,6 +1,5 @@
 // Digital Marketing Pro — hierarchical admin roles
-// Browser-side role checks control the UI only. Sensitive writes must be
-// enforced server-side by Supabase RLS/RPC as well.
+// UI checks are convenience only. Sensitive role changes are enforced by Supabase RPC/RLS.
 window.DMP_ROLES = Object.freeze({
   user: 0,
   moderator: 1,
@@ -14,11 +13,19 @@ window.DMP_ROLE_LABELS = Object.freeze({
   moderator: 'Modérateur',
   administrator: 'Administrator',
   co_admin: 'Co Admin',
-  owner: 'Owner'
+  owner: 'Owner / Founder'
+});
+
+window.DMP_ROLE_ICONS = Object.freeze({
+  user: '👤',
+  moderator: '🔧',
+  administrator: '🛡️',
+  co_admin: '💎',
+  owner: '👑'
 });
 
 window.DMP_NORMALIZE_ROLE = function (role) {
-  // Keep the existing account working during migration.
+  // Legacy values are migrated to the new hierarchy.
   if (role === 'admin' || role === 'super_admin') return 'owner';
   return window.DMP_ROLES[role] !== undefined ? role : 'user';
 };
@@ -32,20 +39,19 @@ window.DMP_ROLE_LEVEL = function (role) {
 };
 
 window.DMP_HAS_ADMIN_ROLE = function (user) {
-  return window.DMP_ROLE_LEVEL(window.DMP_GET_ROLE(user)) >= 1;
+  return window.DMP_ROLE_LEVEL(window.DMP_GET_ROLE(user)) >= 2;
 };
 
 window.DMP_CAN_MANAGE_ROLE = function (actorRole, targetRole) {
   const actor = window.DMP_ROLE_LEVEL(actorRole);
   const target = window.DMP_ROLE_LEVEL(targetRole);
-  // Owner controls everything; everyone else can only manage strictly lower roles.
-  return actor === 4 ? target < 4 : actor > target;
+  // Owner can manage every lower role. Other management roles can only manage strictly lower roles.
+  // Moderator intentionally has no role-management power.
+  return actor >= 2 && target < actor;
 };
 
 window.DMP_ASSIGNABLE_ROLES = function (actorRole) {
   const actor = window.DMP_ROLE_LEVEL(actorRole);
-  return Object.keys(window.DMP_ROLES).filter(role => {
-    const level = window.DMP_ROLES[role];
-    return level < actor;
-  });
+  if (actor < 2) return [];
+  return Object.keys(window.DMP_ROLES).filter(role => window.DMP_ROLES[role] < actor);
 };
