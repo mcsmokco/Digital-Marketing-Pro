@@ -12,6 +12,7 @@
   function levelOf(role) { return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0; }
   function labelOf(role) { return `${window.DMP_ROLE_ICONS?.[role] || '👤'} ${window.DMP_ROLE_LABELS?.[role] || role}`; }
   const can = (actor, minimum) => levelOf(actor) >= minimum;
+  const ownerOnly = role => levelOf(role) >= 5;
 
   async function getCurrentProfile(user) {
     const { data, error } = await client.from('profiles').select('id,email,username,date_of_birth,role,premium,device_info,last_login_at,created_at').eq('id', user.id).maybeSingle();
@@ -53,14 +54,25 @@
 
   function deny(message) { if (syncTimer) clearInterval(syncTimer); $('adminEmail').textContent = ''; $('adminContent').hidden = true; $('accessDenied').hidden = false; const p = $('accessDenied').querySelector('p'); if (p) p.textContent = message; }
   function applyRoleUi(actorRole) {
-    const moderator = can(actorRole, 1), admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = levelOf(actorRole) >= 5;
+    const moderator = can(actorRole, 1), admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = ownerOnly(actorRole);
     document.querySelectorAll('[data-min-role]').forEach(el => { el.hidden = levelOf(actorRole) < Number(el.dataset.minRole); });
     document.querySelectorAll('[data-owner-only]').forEach(el => { el.hidden = !owner; });
     const courses = $('courses'), certificates = $('certificates');
     if (courses) courses.querySelectorAll('button').forEach(b => { b.disabled = !can(actorRole, 2); });
     if (certificates) certificates.hidden = false;
     const msg = $('usersMessage');
-    if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى.' : coAdmin ? '💎 Coadmin: إدارة الرتب الأدنى فقط.' : moderator ? '🔧 Moderateur: صلاحيات إشراف محدودة، بدون تغيير الرتب.' : '';
+    if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات، بما فيها بيانات الأجهزة والمتصفحات والبيانات الحساسة.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى. بيانات Owner الحساسة مخفية.' : coAdmin ? '💎 Co Admin: إدارة الرتب الأدنى فقط. بيانات Owner الحساسة مخفية.' : moderator ? '🔧 Moderateur: صلاحيات إشراف محدودة، بدون تغيير الرتب. بيانات Owner الحساسة مخفية.' : '';
+    setUsersPrivacyUi(owner);
+  }
+
+  function setUsersPrivacyUi(isOwner) {
+    const table = document.querySelector('.users-table');
+    if (!table) return;
+    const headers = table.querySelectorAll('thead th');
+    if (headers[0]) headers[0].textContent = 'المستخدم';
+    if (headers[1]) headers[1].textContent = isOwner ? 'البريد' : 'البريد';
+    if (headers[2]) headers[2].textContent = 'تاريخ الازدياد';
+    if (headers[3]) headers[3].textContent = isOwner ? 'الجهاز / المتصفح / آخر دخول' : 'الجهاز / المتصفح';
   }
 
   async function loadStats(actorRole) {
@@ -79,23 +91,30 @@
     return `<select class="role-select" aria-label="دور المستخدم">${roles.map(role => `<option value="${role}" ${role === currentRole ? 'selected' : ''}>${labelOf(role)}</option>`).join('')}</select>`;
   }
 
-  function formatDate(value) { if (!value) return '—'; try { return new Intl.DateTimeFormat('ar-MA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)); } catch (e) { return '—'; } }
-  function formatLastLogin(value, device) { if (!value && !device) return 'لم يسجل بعد'; const date = value ? new Intl.DateTimeFormat('ar-MA', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'; return `${escapeHtml(device || 'جهاز غير معروف')}<br><small>${escapeHtml(date)}</small>`; }
+  function formatDate(value, hidden = false) { if (hidden) return '🔒 مخفي'; if (!value) return '—'; try { return new Intl.DateTimeFormat('ar-MA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)); } catch (e) { return '—'; } }
+  function formatLastLogin(value, device, hidden = false) { if (hidden) return '🔒 معلومات Owner مخفية'; if (!value && !device) return 'لم يسجل بعد'; const date = value ? new Intl.DateTimeFormat('ar-MA', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'; return `${escapeHtml(device || 'جهاز غير معروف')}<br><small>${escapeHtml(date)}</small>`; }
 
   async function loadUsers(actorRole) {
     const tbody = $('usersList'), message = $('usersMessage'); if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">جاري تحميل المستخدمين...</td></tr>';
+
+    // IMPORTANT: do not read the profiles table directly here. The RPC applies
+    // Owner privacy server-side, so Admin / Co Admin cannot receive Owner's
+    // email, DOB, device or last-login metadata even through browser devtools.
     let data, error;
-    const result = await client.from('profiles').select('id,email,username,date_of_birth,role,premium,device_info,last_login_at,created_at').order('created_at', { ascending: false });
-    data = result.data; error = result.error;
+    const result = await client.rpc('admin_list_profiles');
+    data = result.data;
+    error = result.error;
+
     if (error) {
-      const fallback = await client.from('profiles').select('id,email,role,premium,created_at').order('created_at', { ascending: false });
-      data = (fallback.data || []).map(u => ({ ...u, username: null, date_of_birth: null, device_info: null, last_login_at: null }));
-      error = fallback.error;
-      if (!error && message) message.textContent = '⚠️ شغّل migration ديال username/profile metadata باش تظهر جميع المعلومات الجديدة.';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">تعذر تحميل المستخدمين. شغّل migration: 20261001_owner_privacy.sql في Supabase.</td></tr>';
+      if (message) message.textContent = `❌ ${error.message}`;
+      return;
     }
-    if (error) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">تعذر تحميل المستخدمين.</td></tr>'; if (message) message.textContent = error.message; return; }
     if (!data?.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">ما كاين حتى مستخدم.</td></tr>'; return; }
+    const isOwner = ownerOnly(actorRole);
+    setUsersPrivacyUi(isOwner);
+
     tbody.innerHTML = data.map(user => {
       const currentRole = user.role || 'user';
       const currentLevel = levelOf(currentRole);
@@ -103,8 +122,10 @@
       const locked = currentRole === 'owner' || currentLevel >= actorLevel;
       const premiumEditable = actorLevel >= 2 && !locked;
       const removable = ['owner','admin','co_admin'].includes(actorRole) && currentRole !== 'owner' && currentLevel < actorLevel;
-      const displayName = user.username || 'غير محدد بعد';
-      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}" data-username="${escapeHtml(user.username || '')}" data-created-at="${escapeHtml(user.created_at || '')}"><td><strong>👤 ${escapeHtml(displayName)}</strong></td><td>${escapeHtml(user.email || '—')}</td><td>${escapeHtml(formatDate(user.date_of_birth))}</td><td>${formatLastLogin(user.last_login_at, user.device_info)}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
+      const ownerHidden = currentRole === 'owner' && !isOwner;
+      const displayName = user.username || (ownerHidden ? 'Owner / Founder' : 'غير محدد بعد');
+      const email = user.email || (ownerHidden ? '🔒 مخفي' : '—');
+      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}" data-username="${escapeHtml(user.username || '')}" data-created-at="${escapeHtml(user.created_at || '')}"><td><strong>👤 ${escapeHtml(displayName)}</strong></td><td>${escapeHtml(email)}</td><td>${formatDate(user.date_of_birth, ownerHidden)}</td><td>${formatLastLogin(user.last_login_at, user.device_info, ownerHidden)}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
     }).join('');
     tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'), actorRole)));
     tbody.querySelectorAll('.remove-user').forEach(btn => btn.addEventListener('click', () => removeUser(btn.closest('tr'), actorRole)));
