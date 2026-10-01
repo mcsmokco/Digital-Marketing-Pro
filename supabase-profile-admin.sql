@@ -3,6 +3,34 @@
 -- id uuid, email text, role text, premium boolean, created_at timestamptz.
 -- This migration never uses or exposes the service_role key.
 
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  role text not null default 'user',
+  premium boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Automatic synchronization: every new Auth account gets a profile immediately.
+create or replace function public.handle_new_user_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, role, premium, created_at)
+  values (new.id, new.email, 'user', false, coalesce(new.created_at, now()))
+  on conflict (id) do update set email = excluded.email;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_profile on auth.users;
+create trigger on_auth_user_created_profile
+after insert on auth.users
+for each row execute function public.handle_new_user_profile();
+
 create or replace function public.current_profile_role()
 returns text
 language sql
@@ -49,17 +77,11 @@ begin
     when 'admin' then 4
     when 'owner' then 5
     else 0 end;
-
-  if actor_level < 1 then
-    raise exception 'Not authorized';
-  end if;
-
+  if actor_level < 1 then raise exception 'Not authorized'; end if;
   insert into public.profiles (id, email, role, premium, created_at)
   select u.id, u.email, 'user', false, coalesce(u.created_at, now())
-  from auth.users u
-  left join public.profiles p on p.id = u.id
+  from auth.users u left join public.profiles p on p.id = u.id
   where p.id is null;
-
   get diagnostics inserted_count = row_count;
   return inserted_count;
 end;
@@ -88,62 +110,16 @@ declare
 begin
   actor_role := public.current_profile_role();
   target_role := coalesce((select role from public.profiles where id = target_user_id), 'user');
-
-  actor_level := case actor_role
-    when 'user' then 0
-    when 'moderateur' then 1
-    when 'administrateur' then 2
-    when 'co_admin' then 3
-    when 'admin' then 4
-    when 'owner' then 5
-    else 0 end;
-
-  target_level := case target_role
-    when 'user' then 0
-    when 'moderateur' then 1
-    when 'administrateur' then 2
-    when 'co_admin' then 3
-    when 'admin' then 4
-    when 'owner' then 5
-    else 0 end;
-
-  requested_level := case new_role
-    when 'user' then 0
-    when 'moderateur' then 1
-    when 'administrateur' then 2
-    when 'co_admin' then 3
-    when 'admin' then 4
-    when 'owner' then 5
-    else -1 end;
-
-  if actor_level < 2 then
-    raise exception 'Not authorized';
-  end if;
-
-  if requested_level < 0 then
-    raise exception 'Invalid role';
-  end if;
-
-  if target_role = 'owner' then
-    raise exception 'Owner is protected';
-  end if;
-
-  if target_level >= actor_level then
-    raise exception 'Cannot manage an equal or higher role';
-  end if;
-
-  if requested_level >= actor_level then
-    raise exception 'Cannot assign an equal or higher role';
-  end if;
-
-  update public.profiles
-  set role = new_role,
-      premium = coalesce(new_premium, false)
-  where id = target_user_id;
-
-  if not found then
-    raise exception 'User profile not found';
-  end if;
+  actor_level := case actor_role when 'user' then 0 when 'moderateur' then 1 when 'administrateur' then 2 when 'co_admin' then 3 when 'admin' then 4 when 'owner' then 5 else 0 end;
+  target_level := case target_role when 'user' then 0 when 'moderateur' then 1 when 'administrateur' then 2 when 'co_admin' then 3 when 'admin' then 4 when 'owner' then 5 else 0 end;
+  requested_level := case new_role when 'user' then 0 when 'moderateur' then 1 when 'administrateur' then 2 when 'co_admin' then 3 when 'admin' then 4 when 'owner' then 5 else -1 end;
+  if actor_level < 2 then raise exception 'Not authorized'; end if;
+  if requested_level < 0 then raise exception 'Invalid role'; end if;
+  if target_role = 'owner' then raise exception 'Owner is protected'; end if;
+  if target_level >= actor_level then raise exception 'Cannot manage an equal or higher role'; end if;
+  if requested_level >= actor_level then raise exception 'Cannot assign an equal or higher role'; end if;
+  update public.profiles set role = new_role, premium = coalesce(new_premium, false) where id = target_user_id;
+  if not found then raise exception 'User profile not found'; end if;
 end;
 $$;
 
