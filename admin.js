@@ -16,6 +16,11 @@
     return data || { id: user.id, email: user.email, role: 'user', premium: false };
   }
 
+  async function syncMissingProfiles() {
+    const { error } = await client.rpc('admin_sync_missing_profiles');
+    return error;
+  }
+
   async function init() {
     if (!enabled) return deny('Supabase غير مفعّل.');
     const { data, error } = await client.auth.getSession();
@@ -27,6 +32,8 @@
     if (!can(actorRole, 1)) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.');
     $('adminContent').hidden = false;
     applyRoleUi(actorRole);
+    const syncError = await syncMissingProfiles();
+    if (syncError && $('usersMessage')) $('usersMessage').textContent = `⚠️ مزامنة الحسابات: ${syncError.message}`;
     await loadStats(actorRole);
     await loadUsers(actorRole);
   }
