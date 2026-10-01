@@ -27,7 +27,47 @@ using (auth.uid() = id);
 drop policy if exists "Managers can read profiles" on public.profiles;
 create policy "Managers can read profiles"
 on public.profiles for select to authenticated
-using (public.current_profile_role() in ('administrateur','co_admin','admin','owner'));
+using (public.current_profile_role() in ('moderateur','administrateur','co_admin','admin','owner'));
+
+create or replace function public.admin_sync_missing_profiles()
+returns integer
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  actor_role text;
+  actor_level integer;
+  inserted_count integer := 0;
+begin
+  actor_role := public.current_profile_role();
+  actor_level := case actor_role
+    when 'user' then 0
+    when 'moderateur' then 1
+    when 'administrateur' then 2
+    when 'co_admin' then 3
+    when 'admin' then 4
+    when 'owner' then 5
+    else 0 end;
+
+  if actor_level < 1 then
+    raise exception 'Not authorized';
+  end if;
+
+  insert into public.profiles (id, email, role, premium, created_at)
+  select u.id, u.email, 'user', false, coalesce(u.created_at, now())
+  from auth.users u
+  left join public.profiles p on p.id = u.id
+  where p.id is null;
+
+  get diagnostics inserted_count = row_count;
+  return inserted_count;
+end;
+$$;
+
+revoke all on function public.admin_sync_missing_profiles() from public;
+revoke all on function public.admin_sync_missing_profiles() from anon;
+grant execute on function public.admin_sync_missing_profiles() to authenticated;
 
 create or replace function public.admin_update_user(
   target_user_id uuid,
