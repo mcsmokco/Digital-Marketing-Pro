@@ -14,48 +14,27 @@
   const can = (actor, minimum) => levelOf(actor) >= minimum;
 
   async function getCurrentProfile(user) {
-    const { data, error } = await client.from('profiles').select('id,email,role,premium').eq('id', user.id).maybeSingle();
-    if (error) throw error;
+    const { data, error } = await client.from('profiles').select('id,email,username,date_of_birth,role,premium,device_info,last_login_at,created_at').eq('id', user.id).maybeSingle();
+    if (error) {
+      const fallback = await client.from('profiles').select('id,email,role,premium,created_at').eq('id', user.id).maybeSingle();
+      if (fallback.error) throw error;
+      return { ...(fallback.data || {}), username: null, date_of_birth: null, device_info: null, last_login_at: null };
+    }
     return data || { id: user.id, email: user.email, role: 'user', premium: false };
   }
 
-  function setSyncStatus(message, tone = 'muted') {
-    const el = $('usersSyncStatus');
-    if (!el) return;
-    el.textContent = message;
-    el.dataset.tone = tone;
-  }
+  function setSyncStatus(message, tone = 'muted') { const el = $('usersSyncStatus'); if (!el) return; el.textContent = message; el.dataset.tone = tone; }
+  function setLastSyncStatus() { lastSyncAt = Date.now(); const time = new Intl.DateTimeFormat('ar-MA', { hour: '2-digit', minute: '2-digit' }).format(new Date(lastSyncAt)); setSyncStatus(`🟢 مزامنة تلقائية · آخر تحديث ${time}`, 'ok'); }
 
-  function setLastSyncStatus() {
-    lastSyncAt = Date.now();
-    const time = new Intl.DateTimeFormat('ar-MA', { hour: '2-digit', minute: '2-digit' }).format(new Date(lastSyncAt));
-    setSyncStatus(`🟢 مزامنة تلقائية · آخر تحديث ${time}`, 'ok');
-  }
-
-  // profiles is kept in sync with auth.users by the Supabase trigger created in the database.
-  // The dashboard only needs to refresh its data; it must NOT call a client-side RPC that may
-  // not exist in every project/database version.
   async function syncProfiles(actorRole, silent = false) {
     if (!client || syncing || !can(actorRole, 1)) return;
     syncing = true;
     if (!silent) setSyncStatus('⏳ جاري تحديث المستخدمين...', 'loading');
-    try {
-      await loadStats(actorRole);
-      await loadUsers(actorRole);
-      setLastSyncStatus();
-    } catch (error) {
-      setSyncStatus(`🔴 تعذر تحديث المستخدمين: ${error.message || 'خطأ غير معروف'}`, 'error');
-    } finally {
-      syncing = false;
-    }
+    try { await loadStats(actorRole); await loadUsers(actorRole); setLastSyncStatus(); }
+    catch (error) { setSyncStatus(`🔴 تعذر تحديث المستخدمين: ${error.message || 'خطأ غير معروف'}`, 'error'); }
+    finally { syncing = false; }
   }
-
-  function startAutoSync(actorRole) {
-    if (syncTimer) clearInterval(syncTimer);
-    syncTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') syncProfiles(actorRole, true);
-    }, 30000);
-  }
+  function startAutoSync(actorRole) { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(() => { if (document.visibilityState === 'visible') syncProfiles(actorRole, true); }, 30000); }
 
   async function init() {
     if (!enabled) return deny('Supabase غير مفعّل.');
@@ -64,7 +43,7 @@
     let profile;
     try { profile = await getCurrentProfile(data.session.user); } catch (e) { return deny('تعذر التحقق من صلاحيات الحساب.'); }
     const actorRole = roleOf(profile);
-    $('adminEmail').textContent = `${labelOf(actorRole)} · ${profile.email || data.session.user.email || ''}`;
+    $('adminEmail').textContent = `${labelOf(actorRole)} · ${profile.username ? profile.username + ' · ' : ''}${profile.email || data.session.user.email || ''}`;
     if (!can(actorRole, 1)) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.');
     $('adminContent').hidden = false;
     applyRoleUi(actorRole);
@@ -72,14 +51,7 @@
     startAutoSync(actorRole);
   }
 
-  function deny(message) {
-    if (syncTimer) clearInterval(syncTimer);
-    $('adminEmail').textContent = '';
-    $('adminContent').hidden = true;
-    $('accessDenied').hidden = false;
-    const p = $('accessDenied').querySelector('p'); if (p) p.textContent = message;
-  }
-
+  function deny(message) { if (syncTimer) clearInterval(syncTimer); $('adminEmail').textContent = ''; $('adminContent').hidden = true; $('accessDenied').hidden = false; const p = $('accessDenied').querySelector('p'); if (p) p.textContent = message; }
   function applyRoleUi(actorRole) {
     const moderator = can(actorRole, 1), admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = levelOf(actorRole) >= 5;
     document.querySelectorAll('[data-min-role]').forEach(el => { el.hidden = levelOf(actorRole) < Number(el.dataset.minRole); });
@@ -96,10 +68,7 @@
     if (!error) $('usersCount').textContent = String(count ?? 0);
     const { count: premiumCount, error: premiumError } = await client.from('profiles').select('*', { count: 'exact', head: true }).eq('premium', true);
     if (!premiumError) $('premiumCount').textContent = String(premiumCount ?? 0);
-    if (!can(actorRole, 4)) {
-      const premiumPanel = $('premium');
-      if (premiumPanel) premiumPanel.querySelectorAll('button').forEach(b => b.disabled = true);
-    }
+    if (!can(actorRole, 4)) { const premiumPanel = $('premium'); if (premiumPanel) premiumPanel.querySelectorAll('button').forEach(b => b.disabled = true); }
   }
 
   function roleOptions(actorRole, currentRole) {
@@ -110,12 +79,23 @@
     return `<select class="role-select" aria-label="دور المستخدم">${roles.map(role => `<option value="${role}" ${role === currentRole ? 'selected' : ''}>${labelOf(role)}</option>`).join('')}</select>`;
   }
 
+  function formatDate(value) { if (!value) return '—'; try { return new Intl.DateTimeFormat('ar-MA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)); } catch (e) { return '—'; } }
+  function formatLastLogin(value, device) { if (!value && !device) return 'لم يسجل بعد'; const date = value ? new Intl.DateTimeFormat('ar-MA', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'; return `${escapeHtml(device || 'جهاز غير معروف')}<br><small>${escapeHtml(date)}</small>`; }
+
   async function loadUsers(actorRole) {
     const tbody = $('usersList'), message = $('usersMessage'); if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">جاري تحميل المستخدمين...</td></tr>';
-    const { data, error } = await client.from('profiles').select('id,email,role,premium,created_at').order('created_at', { ascending: false });
-    if (error) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">تعذر تحميل المستخدمين.</td></tr>'; if (message) message.textContent = error.message; return; }
-    if (!data?.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">ما كاين حتى مستخدم.</td></tr>'; return; }
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">جاري تحميل المستخدمين...</td></tr>';
+    let data, error;
+    const result = await client.from('profiles').select('id,email,username,date_of_birth,role,premium,device_info,last_login_at,created_at').order('created_at', { ascending: false });
+    data = result.data; error = result.error;
+    if (error) {
+      const fallback = await client.from('profiles').select('id,email,role,premium,created_at').order('created_at', { ascending: false });
+      data = (fallback.data || []).map(u => ({ ...u, username: null, date_of_birth: null, device_info: null, last_login_at: null }));
+      error = fallback.error;
+      if (!error && message) message.textContent = '⚠️ شغّل migration ديال username/profile metadata باش تظهر جميع المعلومات الجديدة.';
+    }
+    if (error) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">تعذر تحميل المستخدمين.</td></tr>'; if (message) message.textContent = error.message; return; }
+    if (!data?.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">ما كاين حتى مستخدم.</td></tr>'; return; }
     tbody.innerHTML = data.map(user => {
       const currentRole = user.role || 'user';
       const currentLevel = levelOf(currentRole);
@@ -123,7 +103,8 @@
       const locked = currentRole === 'owner' || currentLevel >= actorLevel;
       const premiumEditable = actorLevel >= 2 && !locked;
       const removable = ['owner','admin','co_admin'].includes(actorRole) && currentRole !== 'owner' && currentLevel < actorLevel;
-      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}"><td>${escapeHtml(user.email || '—')}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
+      const displayName = user.username || 'غير محدد بعد';
+      return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}" data-username="${escapeHtml(user.username || '')}" data-created-at="${escapeHtml(user.created_at || '')}"><td><strong>👤 ${escapeHtml(displayName)}</strong></td><td>${escapeHtml(user.email || '—')}</td><td>${escapeHtml(formatDate(user.date_of_birth))}</td><td>${formatLastLogin(user.last_login_at, user.device_info)}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
     }).join('');
     tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'), actorRole)));
     tbody.querySelectorAll('.remove-user').forEach(btn => btn.addEventListener('click', () => removeUser(btn.closest('tr'), actorRole)));
@@ -146,22 +127,16 @@
   async function removeUser(row, actorRole) {
     if (!row || !['owner','admin','co_admin'].includes(actorRole)) return;
     const id = row.dataset.userId;
-    const email = row.querySelector('td')?.textContent?.trim() || 'هذا المستخدم';
+    const email = row.querySelector('td:nth-child(2)')?.textContent?.trim() || 'هذا المستخدم';
     const currentRole = row.dataset.currentRole || 'user';
     if (currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
     const confirmed = window.confirm(`⚠️ تأكيد إزالة العضو\n\n${email}\n\nسيتم حذف الحساب نهائياً ولا يمكن التراجع عن العملية.`);
     if (!confirmed) return;
-    const btn = row.querySelector('.remove-user');
-    if (btn) { btn.disabled = true; btn.textContent = 'جاري الإزالة...'; }
+    const btn = row.querySelector('.remove-user'); if (btn) { btn.disabled = true; btn.textContent = 'جاري الإزالة...'; }
     const { error } = await client.rpc('admin_remove_user', { target_user_id: id });
-    if (error) {
-      if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`;
-      if (btn) { btn.disabled = false; btn.textContent = '🗑️ إزالة'; }
-      return;
-    }
+    if (error) { if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`; if (btn) { btn.disabled = false; btn.textContent = '🗑️ إزالة'; } return; }
     if ($('usersMessage')) $('usersMessage').textContent = `✅ تمت إزالة ${email} نهائياً.`;
-    await loadStats(actorRole);
-    await loadUsers(actorRole);
+    await loadStats(actorRole); await loadUsers(actorRole);
   }
 
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
@@ -170,24 +145,9 @@
   document.addEventListener('DOMContentLoaded', () => {
     $('refreshUsers')?.addEventListener('click', async () => {
       const { data } = await client.auth.getSession();
-      if (data.session?.user) {
-        try {
-          const profile = await getCurrentProfile(data.session.user);
-          const role = roleOf(profile);
-          if (levelOf(role) < 1) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.');
-          applyRoleUi(role);
-          await syncProfiles(role);
-        } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); }
-      }
+      if (data.session?.user) { try { const profile = await getCurrentProfile(data.session.user); const role = roleOf(profile); if (levelOf(role) < 1) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.'); applyRoleUi(role); await syncProfiles(role); } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); } }
     });
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastSyncAt > 30000) {
-        client?.auth.getSession().then(({ data }) => {
-          if (!data.session?.user) return;
-          getCurrentProfile(data.session.user).then(profile => syncProfiles(roleOf(profile), true)).catch(() => {});
-        });
-      }
-    });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastSyncAt > 30000) { client?.auth.getSession().then(({ data }) => { if (!data.session?.user) return; getCurrentProfile(data.session.user).then(profile => syncProfiles(roleOf(profile), true)).catch(() => {}); }); } });
     init();
   });
 })();
