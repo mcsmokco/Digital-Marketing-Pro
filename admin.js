@@ -4,6 +4,9 @@
   const enabled = Boolean(url && key && window.supabase);
   const client = enabled ? window.supabase.createClient(url, key) : null;
   const $ = id => document.getElementById(id);
+  let syncTimer = null;
+  let syncing = false;
+  let lastSyncAt = 0;
 
   function roleOf(profile) { return typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(profile) : 'user'; }
   function levelOf(role) { return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0; }
@@ -14,6 +17,44 @@
     const { data, error } = await client.from('profiles').select('id,email,role,premium').eq('id', user.id).maybeSingle();
     if (error) throw error;
     return data || { id: user.id, email: user.email, role: 'user', premium: false };
+  }
+
+  function setSyncStatus(message, tone = 'muted') {
+    const el = $('usersSyncStatus');
+    if (!el) return;
+    el.textContent = message;
+    el.dataset.tone = tone;
+  }
+
+  function setLastSyncStatus(inserted = 0) {
+    lastSyncAt = Date.now();
+    const time = new Intl.DateTimeFormat('ar-MA', { hour: '2-digit', minute: '2-digit' }).format(new Date(lastSyncAt));
+    const suffix = inserted > 0 ? ` · +${inserted} مستخدم` : '';
+    setSyncStatus(`🟢 مزامنة تلقائية · آخر تحديث ${time}${suffix}`, 'ok');
+  }
+
+  async function syncProfiles(actorRole, silent = false) {
+    if (!client || syncing || !can(actorRole, 1)) return;
+    syncing = true;
+    if (!silent) setSyncStatus('⏳ جاري مزامنة المستخدمين...', 'loading');
+    try {
+      const { data, error } = await client.rpc('admin_sync_missing_profiles');
+      if (error) throw error;
+      setLastSyncStatus(Number(data) || 0);
+      await loadStats(actorRole);
+      await loadUsers(actorRole);
+    } catch (error) {
+      setSyncStatus(`🔴 تعذر تحديث المستخدمين: ${error.message || 'خطأ غير معروف'}`, 'error');
+    } finally {
+      syncing = false;
+    }
+  }
+
+  function startAutoSync(actorRole) {
+    if (syncTimer) clearInterval(syncTimer);
+    syncTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') syncProfiles(actorRole, true);
+    }, 30000);
   }
 
   async function init() {
@@ -27,11 +68,12 @@
     if (!can(actorRole, 1)) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.');
     $('adminContent').hidden = false;
     applyRoleUi(actorRole);
-    await loadStats(actorRole);
-    await loadUsers(actorRole);
+    await syncProfiles(actorRole);
+    startAutoSync(actorRole);
   }
 
   function deny(message) {
+    if (syncTimer) clearInterval(syncTimer);
     $('adminEmail').textContent = '';
     $('adminContent').hidden = true;
     $('accessDenied').hidden = false;
@@ -124,9 +166,28 @@
 
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 
-  $('logoutAdmin').addEventListener('click', async () => { if (client) await client.auth.signOut({ scope: 'local' }).catch(() => {}); location.href = 'index.html'; });
+  $('logoutAdmin').addEventListener('click', async () => { if (syncTimer) clearInterval(syncTimer); if (client) await client.auth.signOut({ scope: 'local' }).catch(() => {}); location.href = 'index.html'; });
   document.addEventListener('DOMContentLoaded', () => {
-    $('refreshUsers')?.addEventListener('click', async () => { const { data } = await client.auth.getSession(); if (data.session?.user) { try { const profile = await getCurrentProfile(data.session.user); const role = roleOf(profile); if (levelOf(role) < 1) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.'); applyRoleUi(role); await loadUsers(role); } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); } } });
+    $('refreshUsers')?.addEventListener('click', async () => {
+      const { data } = await client.auth.getSession();
+      if (data.session?.user) {
+        try {
+          const profile = await getCurrentProfile(data.session.user);
+          const role = roleOf(profile);
+          if (levelOf(role) < 1) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.');
+          applyRoleUi(role);
+          await syncProfiles(role);
+        } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); }
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastSyncAt > 30000) {
+        client?.auth.getSession().then(({ data }) => {
+          if (!data.session?.user) return;
+          getCurrentProfile(data.session.user).then(profile => syncProfiles(roleOf(profile), true)).catch(() => {});
+        });
+      }
+    });
     init();
   });
 })();
