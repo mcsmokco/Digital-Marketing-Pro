@@ -1,9 +1,12 @@
 (() => {
   const $ = id => document.getElementById(id);
   let allRows = [];
+  let initialized = false;
   const roleLabels = { owner: 'owner', co_admin: 'co_admin', admin: 'admin', administrateur: 'administrateur', moderateur: 'moderateur', user: 'user' };
   const roleLevel = { owner: 5, admin: 4, co_admin: 3, administrateur: 2, moderateur: 1, user: 0 };
+
   function normalize(value) { return String(value || '').trim().toLowerCase(); }
+  function normalizeFilterRole(value) { return value === 'moderator' ? 'moderateur' : value; }
   function getRole(row) {
     const select = row.querySelector('.role-select');
     const raw = select ? select.value : (row.dataset.currentRole || 'user');
@@ -13,11 +16,13 @@
     const email = normalize(row.querySelector('td:nth-child(2)')?.textContent);
     const username = normalize(row.dataset.username || row.querySelector('td strong')?.textContent);
     const search = normalize($('usersSearch')?.value);
-    const role = $('usersRoleFilter')?.value || 'all';
+    const role = normalizeFilterRole($('usersRoleFilter')?.value || 'all');
     const premium = $('usersPremiumFilter')?.value || 'all';
     const checkbox = row.querySelector('.premium-check');
     const isPremium = !!checkbox?.checked;
-    return (!search || email.includes(search) || username.includes(search)) && (role === 'all' || getRole(row) === role) && (premium === 'all' || (premium === 'premium' ? isPremium : !isPremium));
+    return (!search || email.includes(search) || username.includes(search)) &&
+      (role === 'all' || getRole(row) === role) &&
+      (premium === 'all' || (premium === 'premium' ? isPremium : !isPremium));
   }
   function sortRows(rows) {
     const sort = $('usersSort')?.value || 'newest';
@@ -57,15 +62,15 @@
   }
   function captureRows() {
     const tbody = $('usersList'); if (!tbody) return;
-    const rows = [...tbody.querySelectorAll('tr[data-user-id]')]; if (!rows.length) return;
+    const rows = [...tbody.querySelectorAll('tr[data-user-id]')];
+    if (!rows.length) return;
     allRows = rows;
-    allRows.forEach(row => {
-      if (!row.dataset.createdAt) row.dataset.createdAt = String(Date.now());
-      row.addEventListener('change', render, { passive: true });
-    });
+    allRows.forEach(row => { if (!row.dataset.createdAt) row.dataset.createdAt = String(Date.now()); });
     render();
   }
   function init() {
+    if (initialized) return;
+    initialized = true;
     ['usersSearch', 'usersRoleFilter', 'usersPremiumFilter', 'usersSort'].forEach(id => {
       $(id)?.addEventListener('input', render);
       $(id)?.addEventListener('change', render);
@@ -73,7 +78,7 @@
     const tbody = $('usersList'); if (!tbody) return;
     const observer = new MutationObserver(() => setTimeout(captureRows, 0));
     observer.observe(tbody, { childList: true });
-    setTimeout(captureRows, 500);
+    captureRows();
   }
   document.addEventListener('DOMContentLoaded', init);
 })();
