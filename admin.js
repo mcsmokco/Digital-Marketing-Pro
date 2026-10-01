@@ -26,6 +26,7 @@
 
   function setSyncStatus(message, tone = 'muted') { const el = $('usersSyncStatus'); if (!el) return; el.textContent = message; el.dataset.tone = tone; }
   function setLastSyncStatus() { lastSyncAt = Date.now(); const time = new Intl.DateTimeFormat('ar-MA', { hour: '2-digit', minute: '2-digit' }).format(new Date(lastSyncAt)); setSyncStatus(`🟢 مزامنة تلقائية · آخر تحديث ${time}`, 'ok'); }
+  function setMessage(message, tone = '') { const el = $('usersMessage'); if (!el) return; el.textContent = message; el.dataset.tone = tone; }
 
   async function syncProfiles(actorRole, silent = false) {
     if (!client || syncing || !can(actorRole, 1)) return;
@@ -57,9 +58,8 @@
     const moderator = can(actorRole, 1), admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = ownerOnly(actorRole);
     document.querySelectorAll('[data-min-role]').forEach(el => { el.hidden = levelOf(actorRole) < Number(el.dataset.minRole); });
     document.querySelectorAll('[data-owner-only]').forEach(el => { el.hidden = !owner; });
-    const courses = $('courses'), certificates = $('certificates');
+    const courses = $('courses');
     if (courses) courses.querySelectorAll('button').forEach(b => { b.disabled = !can(actorRole, 2); });
-    if (certificates) certificates.hidden = false;
     const msg = $('usersMessage');
     if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات، بما فيها بيانات الأجهزة والمتصفحات والبيانات الحساسة.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى. بيانات Owner الحساسة مخفية.' : coAdmin ? '💎 Co Admin: إدارة الرتب الأدنى فقط. بيانات Owner الحساسة مخفية.' : moderator ? '🔧 Moderateur: صلاحيات إشراف محدودة، بدون تغيير الرتب. بيانات Owner الحساسة مخفية.' : '';
     setUsersPrivacyUi(owner);
@@ -70,7 +70,7 @@
     if (!table) return;
     const headers = table.querySelectorAll('thead th');
     if (headers[0]) headers[0].textContent = 'المستخدم';
-    if (headers[1]) headers[1].textContent = isOwner ? 'البريد' : 'البريد';
+    if (headers[1]) headers[1].textContent = 'البريد';
     if (headers[2]) headers[2].textContent = 'تاريخ الازدياد';
     if (headers[3]) headers[3].textContent = isOwner ? 'الجهاز / المتصفح / آخر دخول' : 'الجهاز / المتصفح';
   }
@@ -95,26 +95,17 @@
   function formatLastLogin(value, device, hidden = false) { if (hidden) return '🔒 معلومات Owner مخفية'; if (!value && !device) return 'لم يسجل بعد'; const date = value ? new Intl.DateTimeFormat('ar-MA', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—'; return `${escapeHtml(device || 'جهاز غير معروف')}<br><small>${escapeHtml(date)}</small>`; }
 
   async function loadUsers(actorRole) {
-    const tbody = $('usersList'), message = $('usersMessage'); if (!tbody) return;
+    const tbody = $('usersList'); if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">جاري تحميل المستخدمين...</td></tr>';
-
-    // IMPORTANT: do not read the profiles table directly here. The RPC applies
-    // Owner privacy server-side, so Admin / Co Admin cannot receive Owner's
-    // email, DOB, device or last-login metadata even through browser devtools.
-    let data, error;
-    const result = await client.rpc('admin_list_profiles');
-    data = result.data;
-    error = result.error;
-
+    const { data, error } = await client.rpc('admin_list_profiles');
     if (error) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">تعذر تحميل المستخدمين. شغّل migration: 20261001_owner_privacy.sql في Supabase.</td></tr>';
-      if (message) message.textContent = `❌ ${error.message}`;
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">تعذر تحميل المستخدمين.</td></tr>';
+      setMessage(`❌ ${error.message || 'فشل admin_list_profiles'}`, 'error');
       return;
     }
     if (!data?.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">ما كاين حتى مستخدم.</td></tr>'; return; }
     const isOwner = ownerOnly(actorRole);
     setUsersPrivacyUi(isOwner);
-
     tbody.innerHTML = data.map(user => {
       const currentRole = user.role || 'user';
       const currentLevel = levelOf(currentRole);
@@ -127,44 +118,72 @@
       const email = user.email || (ownerHidden ? '🔒 مخفي' : '—');
       return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}" data-username="${escapeHtml(user.username || '')}" data-created-at="${escapeHtml(user.created_at || '')}"><td><strong>👤 ${escapeHtml(displayName)}</strong></td><td>${escapeHtml(email)}</td><td>${formatDate(user.date_of_birth, ownerHidden)}</td><td>${formatLastLogin(user.last_login_at, user.device_info, ownerHidden)}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
     }).join('');
-    tbody.querySelectorAll('.save-user').forEach(btn => btn.addEventListener('click', () => saveUser(btn.closest('tr'), actorRole)));
-    tbody.querySelectorAll('.remove-user').forEach(btn => btn.addEventListener('click', () => removeUser(btn.closest('tr'), actorRole)));
+
+    // Event delegation survives table re-rendering/filtering and prevents duplicate handlers.
+    if (!tbody.dataset.actionsBound) {
+      tbody.dataset.actionsBound = '1';
+      tbody.addEventListener('click', event => {
+        const save = event.target.closest('.save-user');
+        if (save && !save.disabled) saveUser(save.closest('tr'), actorRole);
+        const remove = event.target.closest('.remove-user');
+        if (remove && !remove.disabled) removeUser(remove.closest('tr'), actorRole);
+      });
+    }
   }
 
   async function saveUser(row, actorRole) {
-    if (!row) return;
-    const id = row.dataset.userId, currentRole = row.dataset.currentRole || 'user';
-    const roleSelect = row.querySelector('.role-select'), role = roleSelect ? roleSelect.value : currentRole;
-    const premiumInput = row.querySelector('.premium-check'), premium = premiumInput ? premiumInput.checked : false;
-    if (levelOf(actorRole) < 2 || currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
-    const btn = row.querySelector('.save-user'); btn.disabled = true; btn.textContent = '...';
-    const { error } = await client.rpc('admin_update_user', { target_user_id: id, new_role: role, new_premium: premium });
-    btn.disabled = false; btn.textContent = 'حفظ';
-    if (error) { if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`; return; }
-    if ($('usersMessage')) $('usersMessage').textContent = '✅ تم تحديث المستخدم بنجاح.';
-    await loadStats(actorRole); await loadUsers(actorRole);
+    if (!row || !client) return;
+    const id = row.dataset.userId;
+    const currentRole = window.DMP_NORMALIZE_ROLE ? window.DMP_NORMALIZE_ROLE(row.dataset.currentRole || 'user') : (row.dataset.currentRole || 'user');
+    const roleSelect = row.querySelector('.role-select');
+    const role = window.DMP_NORMALIZE_ROLE ? window.DMP_NORMALIZE_ROLE(roleSelect?.value || currentRole) : (roleSelect?.value || currentRole);
+    const premiumInput = row.querySelector('.premium-check');
+    const premium = premiumInput ? premiumInput.checked : false;
+    if (!id || levelOf(actorRole) < 2 || currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
+    if (!window.DMP_CAN_MANAGE_ROLE?.(actorRole, currentRole)) { setMessage('❌ هذه الرتبة خارج نطاق إدارتك.', 'error'); return; }
+    if (levelOf(role) >= levelOf(actorRole) || role === 'owner') { setMessage('❌ لا يمكنك تعيين رتبة مساوية أو أعلى من رتبتك.', 'error'); return; }
+    const btn = row.querySelector('.save-user');
+    if (!btn) return;
+    btn.disabled = true; btn.textContent = '⏳';
+    setMessage('⏳ جاري حفظ التغييرات...', 'loading');
+    try {
+      const result = await client.rpc('admin_update_user', { target_user_id: id, new_role: role, new_premium: premium });
+      if (result.error) throw result.error;
+      setMessage(`✅ تم تحديث المستخدم إلى ${labelOf(role)} بنجاح.`, 'ok');
+      await loadStats(actorRole);
+      await loadUsers(actorRole);
+    } catch (error) {
+      setMessage(`❌ ${error?.message || 'تعذر تحديث المستخدم.'}`, 'error');
+    } finally {
+      if (document.contains(btn)) { btn.disabled = false; btn.textContent = 'حفظ'; }
+    }
   }
 
   async function removeUser(row, actorRole) {
-    if (!row || !['owner','admin','co_admin'].includes(actorRole)) return;
+    if (!row || !client || !['owner','admin','co_admin'].includes(actorRole)) return;
     const id = row.dataset.userId;
     const email = row.querySelector('td:nth-child(2)')?.textContent?.trim() || 'هذا المستخدم';
     const currentRole = row.dataset.currentRole || 'user';
-    if (currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
-    const confirmed = window.confirm(`⚠️ تأكيد إزالة العضو\n\n${email}\n\nسيتم حذف الحساب نهائياً ولا يمكن التراجع عن العملية.`);
-    if (!confirmed) return;
+    if (!id || currentRole === 'owner' || levelOf(currentRole) >= levelOf(actorRole)) return;
+    if (!window.confirm(`⚠️ تأكيد إزالة العضو\n\n${email}\n\nسيتم حذف الحساب نهائياً ولا يمكن التراجع عن العملية.`)) return;
     const btn = row.querySelector('.remove-user'); if (btn) { btn.disabled = true; btn.textContent = 'جاري الإزالة...'; }
-    const { error } = await client.rpc('admin_remove_user', { target_user_id: id });
-    if (error) { if ($('usersMessage')) $('usersMessage').textContent = `❌ ${error.message}`; if (btn) { btn.disabled = false; btn.textContent = '🗑️ إزالة'; } return; }
-    if ($('usersMessage')) $('usersMessage').textContent = `✅ تمت إزالة ${email} نهائياً.`;
-    await loadStats(actorRole); await loadUsers(actorRole);
+    try {
+      const { error } = await client.rpc('admin_remove_user', { target_user_id: id });
+      if (error) throw error;
+      setMessage(`✅ تمت إزالة ${email} نهائياً.`, 'ok');
+      await loadStats(actorRole); await loadUsers(actorRole);
+    } catch (error) {
+      setMessage(`❌ ${error?.message || 'تعذر إزالة المستخدم.'}`, 'error');
+      if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = '🗑️ إزالة'; }
+    }
   }
 
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
 
-  $('logoutAdmin').addEventListener('click', async () => { if (syncTimer) clearInterval(syncTimer); if (client) await client.auth.signOut({ scope: 'local' }).catch(() => {}); location.href = 'index.html'; });
   document.addEventListener('DOMContentLoaded', () => {
+    $('logoutAdmin')?.addEventListener('click', async () => { if (syncTimer) clearInterval(syncTimer); if (client) await client.auth.signOut({ scope: 'local' }).catch(() => {}); location.href = 'index.html'; });
     $('refreshUsers')?.addEventListener('click', async () => {
+      if (!client) return;
       const { data } = await client.auth.getSession();
       if (data.session?.user) { try { const profile = await getCurrentProfile(data.session.user); const role = roleOf(profile); if (levelOf(role) < 1) return deny('هذه اللوحة مخصصة للرتب الإدارية من Modérateur فما فوق.'); applyRoleUi(role); await syncProfiles(role); } catch (e) { deny('تعذر التحقق من صلاحيات الحساب.'); } }
     });
