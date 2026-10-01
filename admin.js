@@ -26,23 +26,23 @@
     el.dataset.tone = tone;
   }
 
-  function setLastSyncStatus(inserted = 0) {
+  function setLastSyncStatus() {
     lastSyncAt = Date.now();
     const time = new Intl.DateTimeFormat('ar-MA', { hour: '2-digit', minute: '2-digit' }).format(new Date(lastSyncAt));
-    const suffix = inserted > 0 ? ` · +${inserted} مستخدم` : '';
-    setSyncStatus(`🟢 مزامنة تلقائية · آخر تحديث ${time}${suffix}`, 'ok');
+    setSyncStatus(`🟢 مزامنة تلقائية · آخر تحديث ${time}`, 'ok');
   }
 
+  // profiles is kept in sync with auth.users by the Supabase trigger created in the database.
+  // The dashboard only needs to refresh its data; it must NOT call a client-side RPC that may
+  // not exist in every project/database version.
   async function syncProfiles(actorRole, silent = false) {
     if (!client || syncing || !can(actorRole, 1)) return;
     syncing = true;
-    if (!silent) setSyncStatus('⏳ جاري مزامنة المستخدمين...', 'loading');
+    if (!silent) setSyncStatus('⏳ جاري تحديث المستخدمين...', 'loading');
     try {
-      const { data, error } = await client.rpc('admin_sync_missing_profiles');
-      if (error) throw error;
-      setLastSyncStatus(Number(data) || 0);
       await loadStats(actorRole);
       await loadUsers(actorRole);
+      setLastSyncStatus();
     } catch (error) {
       setSyncStatus(`🔴 تعذر تحديث المستخدمين: ${error.message || 'خطأ غير معروف'}`, 'error');
     } finally {
