@@ -1,12 +1,16 @@
--- Digital Marketing Pro — enforce Owner privacy at RLS level
--- Run once in the Supabase SQL Editor after 20261001_owner_privacy.sql.
+-- Digital Marketing Pro — enforce hierarchical profile visibility at RLS level
+-- Run once in the Supabase SQL Editor after the profile visibility migration.
+-- A manager can read only profiles strictly below their own role.
+-- Users can still read their own profile through the existing self-read policy.
 
--- Managers may read profiles, but never the Owner row.
--- Owner keeps access through the self-read policy and the secure admin RPC.
 drop policy if exists "Managers can read profiles" on public.profiles;
-create policy "Managers can read non-owner profiles"
-on public.profiles for select to authenticated
+drop policy if exists "Managers can read non-owner profiles" on public.profiles;
+
+create policy "Managers can read lower role profiles"
+on public.profiles
+for select
+to authenticated
 using (
-  public.current_profile_role() in ('moderateur','administrateur','co_admin','admin','owner')
-  and role <> 'owner'
+  public.role_level((select public.current_profile_role())) >= 1
+  and public.role_level(role) < public.role_level((select public.current_profile_role()))
 );
