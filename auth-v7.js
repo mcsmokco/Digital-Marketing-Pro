@@ -131,11 +131,30 @@
   document.addEventListener('DOMContentLoaded', async () => {
     ensureUi(); if (!enabled) return; if (forcedLoggedOut()) { currentUser = null; currentProfile = null; clearAuthStorage(); resetAccountButton(); closeAuth(); return; }
     const { data } = await client.auth.getSession(); if (loggingOut || forcedLoggedOut()) return; currentUser = data.session?.user || null; if (currentUser) { await loadCurrentProfile(currentUser); showAccount(); loadProgress(currentUser).catch(() => {}); }
-    client.auth.onAuthStateChange(async (event, session) => {
+    client.auth.onAuthStateChange((event, session) => {
       if (loggingOut || forcedLoggedOut()) { currentUser = null; currentProfile = null; closeAuth(); resetAccountButton(); return; }
-      if (event === 'PASSWORD_RECOVERY') { currentUser = session?.user || currentUser; await loadCurrentProfile(currentUser); showPasswordRecovery(); return; }
+      if (event === 'PASSWORD_RECOVERY') {
+        currentUser = session?.user || currentUser;
+        setTimeout(async () => {
+          if (loggingOut || forcedLoggedOut()) return;
+          await loadCurrentProfile(currentUser);
+          showPasswordRecovery();
+        }, 0);
+        return;
+      }
       currentUser = session?.user || null;
-      if (currentUser) { await loadCurrentProfile(currentUser); showAccount(); } else { currentProfile = null; closeAuth(); resetAccountButton(); }
+      if (currentUser) {
+        setTimeout(async () => {
+          if (loggingOut || forcedLoggedOut() || !currentUser) return;
+          await loadCurrentProfile(currentUser);
+          showAccount();
+          loadProgress(currentUser).catch(() => {});
+        }, 0);
+      } else {
+        currentProfile = null;
+        closeAuth();
+        resetAccountButton();
+      }
     });
   });
 })();
