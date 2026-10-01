@@ -2,48 +2,77 @@
 
 ## نظام الصلاحيات الحالي
 
-المرجع الأساسي للصلاحيات هو `public.profiles.role` في Supabase:
+المرجع التنفيذي الوحيد لنظام RBAC وRLS هو:
 
-- `user` → مستخدم عادي
-- `moderateur` → صلاحيات إشراف
-- `administrateur` → إدارة الرتب الأدنى
-- `co_admin` → إدارة الرتب الأدنى
-- `admin` → إدارة الرتب الأدنى
-- `owner` → المؤسس، محمي ولا يمكن تغييره أو حذفه من لوحة الإدارة
+`supabase/migrations/20261001_rbac_security_consolidation.sql`
 
-وحالة Premium محفوظة في `public.profiles.premium`.
+الترتيب الرسمي:
+
+- `user` → 0
+- `moderateur` → 1
+- `administrateur` → 2
+- `co_admin` → 3
+- `admin` → 4
+- `owner` → 5
+
+قاعدة الإدارة: الحساب الإداري لا يقرأ أو يدير رتبة مساوية أو أعلى منه. Owner محمي.
+
+Premium محفوظ في `public.profiles.premium`.
+
+## مهم قبل التنفيذ
+
+لا تشغّل ملفات SQL القديمة بشكل عشوائي، خصوصاً:
+
+- `supabase-auto-profile-sync.sql`
+- `supabase-profile-admin.sql`
+- `supabase-member-removal.sql`
+- أي نسخة قديمة من RBAC خارج `supabase/migrations/`
+
+هذه الملفات أصبحت مرجعاً تاريخياً فقط لتجنب إنشاء Functions/Triggers/RLS مكررة.
 
 ## التفعيل الآمن
 
-نفّذ ملف `supabase/admin_users.sql` في Supabase SQL Editor مرة واحدة. الملف هو المرجع الوحيد الحالي لنظام RBAC، وينشئ:
+طبّق migrations بالترتيب الموجود داخل `supabase/migrations/`. بعد ذلك طبّق فقط الـ migration الجديدة:
 
-- جدول `profiles` وRLS.
-- `current_profile_role()` للتحقق من الرتبة من قاعدة البيانات.
-- `admin_update_user(...)` لتغيير الرتبة وPremium مع تحقق هرمي.
-- `admin_remove_user(...)` لحذف الحسابات الأدنى مع حماية Owner.
-- Trigger لإنشاء `profiles` تلقائياً عند إنشاء حساب جديد.
+`20261001_rbac_security_consolidation.sql`
 
-لا يحتاج الموقع إلى `service_role` key.
+لا يحتاج الموقع إلى `service_role` key داخل المتصفح.
 
-**مهم جداً:** لا تضع أبداً `service_role` أو أي Secret key في GitHub Pages أو JavaScript داخل المتصفح.
+**ممنوع نهائياً وضع `service_role` أو أي Secret key في GitHub Pages أو JavaScript.**
+
+## ما الذي تضمنه migration الجديدة؟
+
+- Trigger واحد فقط لإنشاء profile بعد إنشاء Auth user.
+- `role_level()` و`current_profile_role()` كمصدر موحد للـRBAC.
+- قراءة المستخدم لبروفايله فقط.
+- الإدارة تقرأ الرتب الأدنى فقط.
+- Owner personal metadata مخفية عن الرتب الأخرى.
+- المستخدم لا يستطيع رفع `role` أو `premium` لنفسه.
+- تغيير الرتب وPremium عبر `admin_update_user()` فقط.
+- حذف الحسابات عبر `admin_remove_user()` فقط.
+- `admin_list_profiles()` لا يرجع نفس/أعلى رتبة.
+- Username unique case-insensitive.
+- حفظ بيانات الجهاز وآخر دخول عبر صلاحيات الحساب نفسه.
+
+## الاختبار بعد تطبيق migration
+
+1. Owner يرى الإدارة.
+2. Admin يرى فقط الرتب الأدنى منه.
+3. Co Admin يرى فقط الرتب الأدنى منه.
+4. Administrateur يرى فقط الرتب الأدنى منه.
+5. Moderateur يرى فقط `user`.
+6. User لا يرى profiles الآخرين.
+7. لا أحد يستطيع تغيير أو حذف Owner.
+8. لا أحد يستطيع إعطاء رتبة مساوية أو أعلى من رتبته.
+9. المستخدم لا يستطيع تعديل `role` أو `premium` لنفسه.
+10. إنشاء Auth user ينشئ profile واحداً فقط.
+11. Username المكرر يرفض.
+12. معلومات Owner الشخصية تبقى مخفية عن الرتب الأخرى.
 
 ## Keep Alive
 
-Workflow الوحيد المخصص لذلك هو:
+Workflow:
 
 `.github/workflows/supabase-keep-alive.yml`
 
-ويعمل تلقائياً كل 12 ساعة، مع تشغيل يدوي عبر `workflow_dispatch`. يستعمل `SUPABASE_URL` و`SUPABASE_ANON_KEY` من GitHub Repository Secrets.
-
-## الاختبار بعد تطبيق SQL
-
-1. سجّل الدخول بحساب Owner.
-2. افتح الموقع وتأكد من ظهور **🛡️ الإدارة**.
-3. افتح `/admin.html` وتأكد من ظهور المستخدمين.
-4. جرّب تغيير Premium لمستخدم عادي.
-5. جرّب ترقية مستخدم إلى رتبة أقل من رتبتك فقط.
-6. تأكد أن Owner لا يمكن تغييره أو حذفه.
-7. سجّل الدخول بحساب عادي وافتح `/admin.html` مباشرة؛ يجب أن تظهر **غير مصرح**.
-8. أنشئ حساباً جديداً؛ يجب إنشاء profile له تلقائياً بدور `user`.
-9. اختبر تسجيل الخروج ثم تسجيل الدخول من جديد بدون الحاجة إلى Refresh.
-10. من GitHub Actions شغّل Keep Alive يدوياً وتأكد من نجاحه.
+يعمل دورياً ويستخدم Secrets الخاصة بـGitHub Actions فقط.
