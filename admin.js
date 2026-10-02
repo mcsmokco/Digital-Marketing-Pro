@@ -97,10 +97,18 @@
   async function loadUsers(actorRole) {
     const tbody = $('usersList'); if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">جاري تحميل المستخدمين...</td></tr>';
-    const { data, error } = await client.rpc('admin_list_profiles');
+    let { data, error } = await client.rpc('admin_list_profiles');
+    if (error) {
+      // Fallback: older projects may not yet have admin_list_profiles. RLS already permits managers to read profiles.
+      try {
+        await client.rpc('admin_sync_missing_profiles');
+        const fallback = await client.from('profiles').select('id,email,username,date_of_birth,role,premium,device_info,last_login_at,created_at').order('created_at', { ascending: false });
+        if (!fallback.error) { data = fallback.data || []; error = null; }
+      } catch (_) {}
+    }
     if (error) {
       tbody.innerHTML = '<tr><td colspan="7" class="empty-state">تعذر تحميل المستخدمين.</td></tr>';
-      setMessage(`❌ ${error.message || 'فشل admin_list_profiles'}`, 'error');
+      setMessage(`❌ ${error.message || 'فشل تحميل المستخدمين'}`, 'error');
       return;
     }
     if (!data?.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">ما كاين حتى مستخدم.</td></tr>'; return; }
@@ -119,7 +127,6 @@
       return `<tr data-user-id="${escapeHtml(user.id)}" data-current-role="${escapeHtml(currentRole)}" data-username="${escapeHtml(user.username || '')}" data-created-at="${escapeHtml(user.created_at || '')}"><td><strong>👤 ${escapeHtml(displayName)}</strong></td><td>${escapeHtml(email)}</td><td>${formatDate(user.date_of_birth, ownerHidden)}</td><td>${formatLastLogin(user.last_login_at, user.device_info, ownerHidden)}</td><td>${roleOptions(actorRole, currentRole)}</td><td><label class="premium-toggle"><input class="premium-check" type="checkbox" ${user.premium ? 'checked' : ''} ${premiumEditable ? '' : 'disabled'}><span>Premium</span></label></td><td><div class="user-actions"><button class="save-user small-btn" type="button" ${locked || actorLevel < 2 ? 'disabled' : ''}>حفظ</button>${removable ? '<button class="remove-user danger-btn" type="button">🗑️ إزالة</button>' : ''}</div></td></tr>`;
     }).join('');
 
-    // Event delegation survives table re-rendering/filtering and prevents duplicate handlers.
     if (!tbody.dataset.actionsBound) {
       tbody.dataset.actionsBound = '1';
       tbody.addEventListener('click', event => {
