@@ -1,306 +1,170 @@
 # Digital Marketing Pro — Project State
 
-> **Purpose:** This file is the durable project checkpoint. It is the first document to read before making changes. It prevents repeated work across ChatGPT conversations and reduces the risk of breaking working features.
+> **Purpose:** Durable project checkpoint. Read this before making changes. GitHub code + this file are the project continuity source of truth across ChatGPT conversations.
 >
 > **Last audit:** 2026-10-02
 > **Default branch:** `main`
 > **Repository:** `mcsmokco/Digital-Marketing-Pro`
-> **Current HEAD:** `95bace1ea7bf53879fb8d6e54d63a2ead944cb79`
+> **Current HEAD:** `f67a3f63e0f63ff8e4a8e6c111ec9c9b1bd763e2`
 >
 ---
 
-## 1. Project mission
+## 1. Mission
+Digital Marketing Pro is an Arabic-first digital marketing learning platform with structured lessons, exercises, tests/projects, progress tracking, accounts, Supabase sync, certificates, community chat, and a future Premium offering.
 
-Digital Marketing Pro is an Arabic-first digital marketing learning platform, intended to take a learner from beginner to professional through structured lessons, exercises, quizzes, projects, progress tracking, certificates, accounts, cloud sync, community chat, and a future Premium offering.
+## 2. Current verified surface
+- `index.html`: public learning/landing site, 12 units, lesson UI, progress hooks, auth/account UI, notifications, chat drawer and Premium presentation.
+- `admin.html`: separate protected/no-index admin dashboard with statistics, users management and placeholder sections for Courses, Premium and Certificates.
+- `chat.html/js/css`: community chat subsystem; recently stabilized for mobile. Do not rewrite casually.
+- `auth-v7.js`: Supabase auth/session, signup/login/reset, profile setup, login metadata and admin entry.
+- `admin-role.js`: role hierarchy and UI convenience helpers.
+- `admin.js`: user listing, role/Premium actions, removal, privacy masking and periodic sync.
 
-The README currently describes 12 training modules, lessons/exercises/tests, local progress persistence, optional Supabase account/cloud sync, completion certificates, and GitHub Pages deployment.
+## 3. RBAC hierarchy
+`user (0) < moderateur (1) < administrateur (2) < co_admin (3) < admin (4) < owner (5)`.
 
-## 2. Repository / deployment baseline
+Browser helpers are convenience checks only. Privileged authorization must remain in Supabase RLS/RPC.
 
-- GitHub repository is public and active.
-- Default branch: `main`.
-- GitHub Pages is enabled according to repository metadata.
-- Repository size is small enough for direct GitHub-based maintenance.
-- There are currently no open GitHub issues.
-- The most recent commit is an RBAC/security-hardening commit.
-- **Do not rewrite history or force-push.**
-- Prefer small, isolated commits and verify the affected feature after each change.
+Important current distinction: the admin dashboard is visible from Modérateur (level 1), while role/Premium management requires level 2+. This must be runtime-tested before changing it.
 
-## 3. Current product surface verified in code
+## 4. Canonical Supabase security source
+The canonical migration is:
+`supabase/migrations/20261001_rbac_security_consolidation.sql`
 
-### Public learning site
-`index.html` is the main landing/learning page. It currently contains:
-- Hero section and learning CTA.
-- 12-unit learning path container.
-- Premium section marked `COMING SOON`.
-- Roadmap.
-- Marketing toolkit/resources.
-- About/final CTA.
-- Community chat drawer.
-- Notifications entry.
-- Account/auth modal.
-- Account settings panel.
-- Lesson modal.
-- Local/cloud progress integration hooks.
+It defines/updates:
+- `role_level()`
+- `current_profile_role()`
+- canonical profile RLS policies
+- one profile creation trigger
+- `update_my_profile()`
+- `record_my_login_metadata()`
+- `admin_update_user()`
+- `admin_remove_user()`
+- `admin_list_profiles()`
+- `admin_sync_missing_profiles()`
 
-The page loads Supabase JS, Supabase configuration, role helpers, authentication, login metadata, admin-link logic, lessons, main script, Premium access, account settings, and chat.
+Security rules currently encoded:
+- managers only read/manage strictly lower roles;
+- Owner is protected;
+- self role/Premium changes are blocked;
+- self-removal is blocked;
+- removal requires level >= 3;
+- `admin_list_profiles()` masks Owner personal metadata for non-Owner actors;
+- profile creation is synchronized by one trigger;
+- no browser `service_role` key.
 
-### Admin dashboard
-`admin.html` exists and is explicitly no-index/no-follow. It contains:
-- Dashboard statistics.
-- Users management.
-- Course management section placeholder.
-- Premium section placeholder.
-- Certificates section placeholder.
-- Responsive admin UI assets.
-- User search/filter/sort controls.
-- Role filter including Owner, Co Admin, Administrator, Modérateur and User.
-- Premium filter.
-- User action area.
-- Mobile user-detail hint.
-- Admin authentication/authorization checks.
+`supabase-schema.sql` is only the original progress/certificate setup and is **not** a complete live database dump.
 
-### Community chat
-The recent commit history shows active work on:
-- Chat page layout/mobile readability.
-- Homepage chat drawer restoration.
-- Mobile chat layout and composer stabilization.
-- Emoji picker/mobile composer fixes.
-- Chat cache-busting.
-- Notifications entry.
+## 5. Authentication/security decisions to preserve
+- Never store passwords in localStorage/sessionStorage/cookies/profile tables.
+- Remember Me persists email only.
+- Never put `service_role` or secret keys in frontend/GitHub Pages code.
+- Do not replace RLS/RPC with frontend-only authorization.
+- Do not execute legacy SQL files randomly; `ADMIN-SETUP.md` identifies them as historical.
 
-**Do not casually rewrite chat CSS/JS.** It has had multiple stabilization passes and should be changed in isolation with mobile regression testing.
+## 6. Product areas
+### Learning
+12 units / lessons / exercises / tests / projects are represented in the current product UI.
 
-## 4. Authentication / account system
+### Progress/certificates
+Initial schema provides `course_progress` and `certificates` with RLS. Completion flow exists in product architecture, but full production/runtime verification is still required.
 
-`auth-v7.js` currently implements:
-- Supabase session detection.
-- Login/signup/reset-password UI.
-- Account modal created dynamically when needed.
-- Explicit logout handling.
-- Auth-token cleanup on logout.
-- Profile loading.
-- Username/date-of-birth profile setup.
-- Username validation and uniqueness check.
-- Device/browser metadata collection.
-- Last-login timestamp recording.
-- Password recovery/update flow.
-- Progress sync entry point.
-- Role-aware account UI.
-- Admin dashboard entry for management roles.
+### Premium
+Premium UI and access helpers exist. Current UI shows 49 MAD. **Payment is not live/verified.**
 
-Important existing decision:
-- **Remember Me must not store a password.** Recent commit history explicitly records a fix to persist email only.
-- Do not introduce client-side password storage.
+### Chat
+Chat, mobile layout, composer and emoji picker have received multiple stabilization commits. Treat as a protected subsystem and change narrowly with mobile regression testing.
 
-## 5. RBAC model — verified
+## 7. Known incomplete work
+1. Live end-to-end RBAC test matrix against Supabase.
+2. Reconcile live Supabase function/policy/schema inventory with Git.
+3. Finish Admin Course Management.
+4. Finish Admin Premium Management.
+5. Finish Admin Certificate Management.
+6. Implement and verify Premium payment.
+7. Final mobile/desktop production QA.
+8. Verify unwanted redirects/navigation without weakening security boundaries.
 
-`admin-role.js` defines a hierarchical role model:
+## 8. Current audit result
+A comprehensive static repository audit was performed on 2026-10-02. The detailed report is:
+`AUDIT-REPORT-2026-10-02.md`
 
-| Level | Role | Meaning |
-|---:|---|---|
-| 0 | `user` | Normal user |
-| 1 | `moderateur` | Moderator |
-| 2 | `administrateur` | Administrator |
-| 3 | `co_admin` | Co Admin |
-| 4 | `admin` | Admin |
-| 5 | `owner` | Owner / Founder |
+The audit found no justification for a broad rewrite. Continue incrementally from the current architecture.
 
-Legacy role aliases are normalized:
-- `administrator` -> `administrateur`
-- `moderator` -> `moderateur`
-- `super_admin` -> `owner`
+## 9. RBAC runtime test matrix — NOT YET EXECUTED
+### Owner
+- [ ] Login/dashboard
+- [ ] See lower roles
+- [ ] Owner-only metadata behavior
+- [ ] Assign User / Modérateur / Administrateur / Co Admin / Admin
+- [ ] Cannot assign Owner through normal UI
+- [ ] Cannot remove self or Owner
 
-Important helper rules currently implemented:
-- Management/admin visibility is level >= 2 in the role helper.
-- Premium-access helper also grants access to moderator+ roles or users with Premium.
-- A manager may manage only targets below their own level.
-- An actor cannot assign a role equal to or above their own level.
-- Owner cannot be managed through the normal role UI.
+### Admin
+- [ ] Dashboard
+- [ ] See only lower roles
+- [ ] Owner metadata hidden
+- [ ] Manage lower roles only
+- [ ] Cannot manage/assign/remove Admin or Owner
+- [ ] Cannot modify self
 
-**Important discrepancy to keep in mind:** `admin.html`/`admin.js` currently allow access from Modérateur (level 1), while the actual management functions require level >= 2. This appears intentional as a supervision/dashboard distinction, but it should be tested and documented before changing it.
+### Co Admin
+- [ ] Dashboard
+- [ ] See only User/Modérateur/Administrateur
+- [ ] Cannot manage/assign/remove equal or higher roles
 
-## 6. Admin user-management security
+### Administrateur
+- [ ] Dashboard
+- [ ] See only User/Modérateur
+- [ ] Cannot manage/assign equal or higher roles
 
-`admin.js` currently:
-- Gets the current session.
-- Loads the current profile.
-- Normalizes role and computes level.
-- Allows dashboard access from moderator level and above.
-- Loads user profiles through `admin_list_profiles` RPC.
-- Has a compatibility fallback for older projects using `admin_sync_missing_profiles` plus direct `profiles` selection.
-- Uses `admin_update_user` RPC to update role/Premium.
-- Uses `admin_remove_user` RPC to remove users.
-- Prevents the UI from changing/removing Owner.
-- Prevents an actor from modifying a target at the same or higher level.
-- Hides Owner-sensitive fields from non-Owner roles.
-- Shows device/browser/last-login information with Owner-specific privacy behavior.
-- Automatically syncs the user list every 30 seconds while the page is visible.
+### Modérateur
+- [ ] Dashboard visibility
+- [ ] No role/Premium changes
+- [ ] No removal
+- [ ] Only lower-ranked users visible through canonical listing
 
-Recent commit history confirms a security-hardening pass titled:
-`Harden RBAC user visibility and sensitive field masking`.
+### User
+- [ ] Cannot use admin dashboard as authorized manager
+- [ ] Cannot read other profiles
+- [ ] Cannot modify own role/Premium
+- [ ] Cannot call privileged RPCs successfully
 
-Recent related commits also confirm:
-- Co Admin user-list/RLS fallback fix.
-- Admin cache refresh after users/roles fixes.
-- User-rank display beside username.
-- Responsive admin layout/mobile optimization.
+Also test refresh, logout/login, direct `admin.html` access and RPC enforcement.
 
-## 7. Supabase / database baseline
-
-The repository contains `supabase-schema.sql` with the original course persistence schema:
-
-### `course_progress`
-- `user_id` primary key referencing `auth.users`.
-- JSONB state.
-- `updated_at` timestamp.
-- RLS enabled.
-- Policies allow each user to select/insert/update only their own progress.
-
-### `certificates`
-- UUID id.
-- `user_id` referencing `auth.users`.
-- Unique certificate code.
-- Issued timestamp.
-- Course name defaulting to Digital Marketing Pro.
-- RLS enabled.
-- Policy allows users to read their own certificates.
-
-The live Supabase project has evolved beyond the original `supabase-schema.sql`; the ChatGPT work history indicates additional `profiles`, RBAC policies/RPC functions, login metadata, chat, and administrative functions exist in the live project. Therefore:
-
-> **Do not treat `supabase-schema.sql` as a complete dump of the live database.** It is an initial setup file. Before changing live RBAC/database logic, inspect the actual current SQL/migrations and Supabase state supplied in the active task.
-
-## 8. Supabase configuration / security
-
-`supabase-config.js` contains:
-- Project URL.
-- A publishable/anon client key.
-
-The file explicitly warns never to put `service_role` in the browser.
-
-The current key is a public client key and is expected to be exposed in a frontend application; security must come from Supabase RLS/RPC rather than hiding the anon/publishable key.
-
-**Never commit:** service-role keys, private API keys, passwords, database passwords, or other secrets.
-
-## 9. Progress / learning architecture
-
-README says:
-- 12 modules.
-- Lessons, exercises and tests.
-- Local progress persistence.
-- Optional cloud synchronization through Supabase.
-- Completion certificate after all modules.
-- GitHub Pages deployment.
-
-`index.html` confirms 12 units / 36 lessons / 12 projects are represented in the product copy/UI.
-
-## 10. Premium architecture
-
-Premium UI is already present but payment is not yet connected.
-
-Current state:
-- Premium section exists.
-- Premium price is shown as 49 MAD in the current UI copy.
-- Button is present.
-- UI says payment will be connected in a later stage.
-- Premium access logic exists in the client role helpers and `premium-access.js`.
-
-**Do not claim payment is live.** It is not verified as live from the repository audit.
-
-## 11. Chat / notifications
-
-Chat and notifications are active product areas and have recently received multiple mobile fixes.
-
-Recent commits indicate:
-- Chat page polish.
-- Mobile readability work.
-- Homepage chat drawer restoration.
-- Mobile overflow prevention.
-- Composer and emoji-picker stabilization.
-- Cache-busting updates.
-
-Treat chat as a protected working subsystem. Any future change must be narrowly scoped.
-
-## 12. Known unfinished / incomplete areas
-
-1. **Live end-to-end RBAC test matrix is still required.**
-   - Owner -> all lower roles.
-   - Admin -> lower roles only.
-   - Co Admin -> lower roles only.
-   - Administrator -> lower roles only.
-   - Moderator -> dashboard visibility but no role management.
-   - User -> no admin access.
-   - Confirm direct URL access, refresh, logout/login and RPC enforcement.
-
-2. **Actual live Supabase schema/RPC inventory should be reconciled with Git.**
-   The repository's original schema file is not a full live dump.
-
-3. **Admin sections for Courses, Premium and Certificates are currently UI shells/placeholders.**
-
-4. **Premium payment is not implemented/verified live.**
-
-5. **The requirement to avoid unnecessary page-to-page redirects should be handled carefully.**
-   The current site uses normal anchors/hash navigation on the public page, while the admin dashboard is a separate `admin.html` page. Do not convert this architecture blindly; first identify which transitions are actually causing unwanted redirects and preserve security boundaries.
-
-6. **Cross-conversation continuity:** this file is now the durable checkpoint. Update it after every significant project milestone.
-
-## 13. Things that are considered working / do not redo without evidence
-
-- Main public landing/learning structure.
-- Existing 12-module product structure.
-- Authentication UI and Supabase session handling.
-- Logout token cleanup behavior.
-- Remember-Me approach that stores email only, not passwords.
-- Existing role normalization hierarchy.
-- Existing admin user-list UI.
+## 10. Things not to redo without evidence
+- Main public learning structure.
+- Existing auth/session behavior.
+- Remember-Me email-only behavior.
+- Existing role hierarchy.
+- Existing admin users UI.
 - Existing responsive admin work.
 - Existing chat/mobile stabilization.
-- Existing Owner-sensitive-field masking.
-- Existing Supabase RLS/RPC-based security approach.
+- Existing Owner-sensitive masking.
+- Existing RLS/RPC security approach.
 
-Before changing any of these, reproduce the bug or identify a concrete requirement.
-
-## 14. Safe development protocol
-
+## 11. Safe development protocol
 1. Read this file first.
-2. Inspect the exact target file(s) before editing.
-3. Do not rewrite unrelated files.
-4. Do not replace security with frontend-only checks.
-5. Keep RBAC enforcement in Supabase RLS/RPC.
-6. Never store passwords in localStorage, sessionStorage, cookies, or profile tables.
-7. Make one focused change at a time.
-8. Commit with a descriptive message.
-9. Update this file with the new state, tests and next step.
-10. Only then move to the next feature.
+2. Inspect exact target files.
+3. Make one focused change.
+4. Preserve database authorization in RLS/RPC.
+5. Never store passwords/secrets client-side.
+6. Commit descriptively.
+7. Update this file with tests/results/next action.
+8. Only then continue.
 
-## 15. Current next action
+## 12. Current next action
+**Run the live RBAC end-to-end test matrix before another architectural change.** Fix only confirmed failures, then update this file with exact results.
 
-**Next task: complete the RBAC end-to-end test matrix against the live Supabase project before making another architectural change.**
+## 13. Audit limitations
+GitHub inspection proves repository code/history, not live browser behavior or the current live Supabase database state. Runtime testing is required for those claims.
 
-Priority order:
-1. Verify Owner login and dashboard.
-2. Verify user list and sensitive-field visibility.
-3. Test Owner -> Co Admin.
-4. Test Owner -> Admin.
-5. Test Admin/Co Admin cannot modify Owner.
-6. Test lower roles cannot escalate themselves.
-7. Test removal restrictions.
-8. Test direct `admin.html` access for User.
-9. Test logout/login/refresh.
-10. Record results here.
+The three supplied ChatGPT share links were not treated as complete source material because their full message bodies were not reliably available through the integration. Verified repository code and history therefore take precedence over guesses.
 
-## 16. Audit limitations
-
-This audit is based on the current GitHub `main` branch and the repository files accessible through the GitHub integration. It does **not** by itself prove the current live Supabase database state, browser behavior, GitHub Pages runtime behavior, or every file's correctness. Those require runtime testing.
-
-The three ChatGPT shared-conversation URLs supplied for historical context could not be treated as a complete source of truth for their full message contents, so this state deliberately prioritizes verified repository code and commit history over guesses from conversation titles.
-
----
-
-## Change log for this checkpoint
-
-### 2026-10-02 — Initial durable state created
-- Audited repository metadata and current `main` HEAD.
-- Reviewed README, main public page, admin page, authentication, role helpers, admin logic and Supabase baseline schema/config.
-- Reviewed recent commit history around RBAC, users, Remember Me, chat and responsive admin work.
-- Created this `PROJECT_STATE.md` as the durable project source-of-truth/checkpoint.
+## Change log
+### 2026-10-02 — Durable checkpoint + audit
+- Audited repository metadata, tree, README, public app, admin app, auth, role helpers, admin logic and Supabase SQL/migrations.
+- Reviewed recent commits around RBAC, user management, Remember Me and mobile chat.
+- Created `PROJECT_STATE.md`.
+- Created `AUDIT-REPORT-2026-10-02.md`.
+- Current next action is live RBAC runtime testing.
