@@ -1,5 +1,5 @@
 /* Digital Marketing Pro — Mobile Chat Polish
-   Loaded after chat.css so mobile fixes stay isolated from desktop/RBAC code. */
+   Mobile-only overrides. Keep desktop/chat logic untouched. */
 
 .chat-page .chat-shell,
 .chat-page .chat-card,
@@ -18,24 +18,80 @@
   .chat-page .messages{width:100%;max-width:100%;padding:14px 10px;overflow-x:hidden;}
   .chat-page .message{max-width:calc(100% - 4px);min-width:0;overflow-wrap:anywhere;word-break:break-word;}
 
-  /* Mobile composer: fixed three-column RTL layout.
-     Send button stays fully visible on the left, emoji in the middle,
-     and the text field gets all remaining width. */
+  /* Composer: fixed left-to-right control order while keeping Arabic input RTL.
+     [إرسال] [😊] [حقل الرسالة] — all controls stay inside the viewport. */
   .chat-page .chat-form{
-    display:grid;
-    grid-template-columns:74px 46px minmax(0,1fr);
+    display:flex;
+    flex-direction:row;
     direction:ltr;
+    align-items:flex-end;
     width:100%;
+    max-width:100%;
     box-sizing:border-box;
     gap:6px;
-    padding:8px 9px max(8px,env(safe-area-inset-bottom));
-    overflow:hidden;
+    padding:8px 10px max(8px,env(safe-area-inset-bottom));
+    overflow:visible;
+    position:relative;
+    z-index:50;
   }
-  .chat-page .chat-input-wrap{grid-column:3;grid-row:1;min-width:0;width:100%;direction:rtl;}
-  .chat-page .chat-form #emojiBtn{grid-column:2;grid-row:1;min-width:46px;width:46px;}
-  .chat-page .chat-form button[type="submit"]{grid-column:1;grid-row:1;width:74px;min-width:74px;max-width:74px;padding:10px 7px;min-height:46px;box-sizing:border-box;}
+  .chat-page .chat-input-wrap{
+    order:3;
+    flex:1 1 auto;
+    min-width:0;
+    width:auto;
+    max-width:none;
+    direction:rtl;
+    position:relative;
+    z-index:51;
+  }
+  .chat-page .chat-form #emojiBtn{
+    order:2;
+    flex:0 0 46px;
+    width:46px;
+    min-width:46px;
+    height:46px;
+    position:relative;
+    z-index:52;
+    pointer-events:auto;
+    touch-action:manipulation;
+  }
+  .chat-page .chat-form button[type="submit"]{
+    order:1;
+    flex:0 0 74px;
+    width:74px;
+    min-width:74px;
+    max-width:74px;
+    min-height:46px;
+    box-sizing:border-box;
+    padding:10px 7px;
+    position:relative;
+    z-index:52;
+    pointer-events:auto;
+    touch-action:manipulation;
+  }
   .chat-page .chat-form #cancelReply{display:none!important;}
-  .chat-page .chat-form textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box;direction:rtl;}
+  .chat-page .chat-form textarea{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    direction:rtl;
+  }
+
+  /* The picker is intentionally above the composer. Do NOT clip it with
+     overflow:hidden on the form. */
+  .chat-page .emoji-picker{
+    right:0;
+    left:auto;
+    bottom:calc(100% + 8px);
+    z-index:200;
+    pointer-events:auto;
+    width:min(310px,calc(100vw - 20px));
+    max-width:calc(100vw - 20px);
+    max-height:min(280px,45vh);
+    overflow:auto;
+  }
+  .chat-page .emoji-choice{touch-action:manipulation;pointer-events:auto;}
 }
 
 @media(max-width:430px){
@@ -43,13 +99,13 @@
   .chat-page .chat-tabs{width:100%;max-width:100%;box-sizing:border-box;}
   .chat-page .messages{padding-inline:8px;}
   .chat-page .message{max-width:calc(100% - 2px);}
-  .chat-page .chat-form{grid-template-columns:70px 42px minmax(0,1fr);gap:5px;padding-inline:7px;}
-  .chat-page .chat-form #emojiBtn{min-width:42px;width:42px;}
-  .chat-page .chat-form button[type="submit"]{width:70px;min-width:70px;max-width:70px;font-size:13px;padding-inline:6px;}
+  .chat-page .chat-form{gap:5px;padding-inline:8px;}
+  .chat-page .chat-form #emojiBtn{flex-basis:42px;width:42px;min-width:42px;height:46px;}
+  .chat-page .chat-form button[type="submit"]{flex-basis:70px;width:70px;min-width:70px;max-width:70px;font-size:13px;padding-inline:6px;}
 }
 
 @media(max-width:360px){
-  .chat-page .chat-form{grid-template-columns:66px 39px minmax(0,1fr);gap:4px;padding-inline:6px;}
-  .chat-page .chat-form #emojiBtn{min-width:39px;width:39px;}
-  .chat-page .chat-form button[type="submit"]{width:66px;min-width:66px;max-width:66px;font-size:12px;}
+  .chat-page .chat-form{gap:4px;padding-inline:7px;}
+  .chat-page .chat-form #emojiBtn{flex-basis:39px;width:39px;min-width:39px;}
+  .chat-page .chat-form button[type="submit"]{flex-basis:66px;width:66px;min-width:66px;max-width:66px;font-size:12px;}
 }
