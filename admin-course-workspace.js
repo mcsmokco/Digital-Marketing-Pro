@@ -360,8 +360,6 @@
         loadLessons(courseId);
       }, 500);
     });
-  }
-
     } catch(err) {
       console.error('Lesson editor error:', err);
       alert('تعذر فتح محرر الدرس: ' + (err?.message || err));
