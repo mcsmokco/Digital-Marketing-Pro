@@ -2,8 +2,17 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const client = window.supabaseClient || null;
+  let client = window.supabaseClient || null;
   let activeCourse = null;
+
+  async function getClient(){
+    if(client && typeof client.rpc === 'function') return client;
+    if(window.supabase && window.DMP_SUPABASE_URL && window.DMP_SUPABASE_ANON_KEY){
+      client = window.supabase.createClient(window.DMP_SUPABASE_URL, window.DMP_SUPABASE_ANON_KEY);
+      return client;
+    }
+    return null;
+  }
 
   function escapeHtml(v){
     return String(v ?? '').replace(/[&<>"']/g, m => ({
@@ -124,6 +133,7 @@
   }
 
   async function openCoursePreview(course){
+    client = await getClient();
     if(!client) return;
     const {data,error} = await client.rpc('admin_list_course_lessons', {p_course_id: course.id});
     if(error){ alert(error.message); return; }
@@ -210,6 +220,7 @@
 
   async function createLesson(e){
     e.preventDefault();
+    client = await getClient();
     if(!activeCourse || !client) return;
     const form = e.currentTarget;
     const fd = new FormData(form);
@@ -237,6 +248,7 @@
   }
 
   async function courseAction(fn, id){
+    client = await getClient();
     if(!client) return;
     const {error} = await client.rpc(fn, {p_course_id:id});
     if(error){ alert(error.message); return; }
@@ -246,6 +258,7 @@
   }
 
   function openNativeLessonEditor(lesson, courseId){
+    client = await getClient();
     if(!lesson || !client) return;
 
     const modal = document.createElement('div');
