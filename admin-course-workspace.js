@@ -245,6 +245,106 @@
     closeWorkspace();
   }
 
+  function openNativeLessonEditor(lesson, courseId){
+    if(!lesson || !client) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'lesson-editor-overlay';
+    modal.innerHTML = `
+      <div class="lesson-editor-modal" role="dialog" aria-modal="true" aria-label="تعديل الدرس">
+        <div class="lesson-editor-head">
+          <div>
+            <span class="eyebrow">LESSON EDITOR</span>
+            <h2>✏️ تعديل الدرس</h2>
+            <p>التعديلات تحفظ كمسودة محتوى، ولن تغيّر حالة النشر تلقائياً.</p>
+          </div>
+          <button type="button" class="lesson-editor-close" aria-label="إغلاق">×</button>
+        </div>
+
+        <form id="lessonEditorForm" class="lesson-editor-form">
+          <div class="lesson-editor-grid">
+            <label>رقم الدرس
+              <input name="position" type="number" min="1" required value="${Number(lesson.position) || 1}">
+            </label>
+            <label>عنوان الدرس
+              <input name="title" maxlength="160" required value="${escapeHtml(lesson.title)}">
+            </label>
+          </div>
+
+          <label>محتوى الدرس
+            <textarea name="body_html" rows="16" placeholder="<h2>عنوان</h2><p>محتوى الدرس...</p>">${escapeHtml(lesson.body_html || '')}</textarea>
+            <small>يمكنك استعمال HTML آمن مثل العناوين، الفقرات، القوائم، الروابط والجداول.</small>
+          </label>
+
+          <label>المشروع / التطبيق
+            <textarea name="project" rows="5" placeholder="التطبيق العملي للدرس...">${escapeHtml(lesson.project || '')}</textarea>
+          </label>
+
+          <label>Quiz JSON
+            <textarea name="quiz" rows="7" placeholder='[{"question":"...","options":["...","..."]}]'>${escapeHtml(JSON.stringify(Array.isArray(lesson.quiz) ? lesson.quiz : [], null, 2))}</textarea>
+            <small>اختياري. إذا لم تكن بحاجة إلى Quiz، اتركه كما هو.</small>
+          </label>
+
+          <div class="lesson-editor-footer">
+            <span id="lessonEditorStatus" class="muted" aria-live="polite"></span>
+            <div>
+              <button type="button" class="small-btn lesson-editor-cancel">إلغاء</button>
+              <button type="submit" class="small-btn primary-course-btn">💾 حفظ التعديلات</button>
+            </div>
+          </div>
+        </form>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    const form = modal.querySelector('#lessonEditorForm');
+    const status = modal.querySelector('#lessonEditorStatus');
+    const close = () => { modal.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if(e.key === 'Escape') close(); };
+
+    modal.querySelector('.lesson-editor-close')?.addEventListener('click', close);
+    modal.querySelector('.lesson-editor-cancel')?.addEventListener('click', close);
+    modal.addEventListener('click', e => { if(e.target === modal) close(); });
+    document.addEventListener('keydown', onKey);
+
+    form?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      let quiz = [];
+      try {
+        quiz = JSON.parse(fd.get('quiz') || '[]');
+        if(!Array.isArray(quiz)) throw new Error('Quiz يجب أن يكون Array');
+      } catch(err) {
+        status.textContent = '❌ Quiz JSON غير صالح';
+        return;
+      }
+
+      status.textContent = 'جاري حفظ التعديلات...';
+      form.querySelector('button[type="submit"]').disabled = true;
+
+      const {error} = await client.rpc('admin_update_lesson', {
+        p_lesson_id: lesson.id,
+        p_position: Number(fd.get('position')),
+        p_title: fd.get('title'),
+        p_body_html: fd.get('body_html') || '',
+        p_quiz: quiz,
+        p_project: fd.get('project') || null
+      });
+
+      if(error){
+        status.textContent = '❌ لم يتم الحفظ: ' + error.message;
+        form.querySelector('button[type="submit"]').disabled = false;
+        return;
+      }
+
+      status.textContent = '✅ تم حفظ التعديلات بنجاح';
+      setTimeout(() => {
+        close();
+        loadLessons(courseId);
+      }, 500);
+    });
+  }
+
   function closeWorkspace(){
     activeCourse = null;
     const panel = $('courseWorkspace');
@@ -255,6 +355,6 @@
     document.getElementById('courses')?.scrollIntoView({behavior:'smooth'});
   }
 
-  window.openNativeCourseWorkspace = renderWorkspace;
+  window.openNativeLessonEditor = openNativeLessonEditor;\n  window.openNativeCourseWorkspace = renderWorkspace;
   window.closeNativeCourseWorkspace = closeWorkspace;
 })();
