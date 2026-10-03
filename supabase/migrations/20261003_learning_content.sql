@@ -140,6 +140,38 @@ begin
 end;
 $$;
 
+create or replace function public.admin_update_lesson(
+  p_lesson_id uuid,
+  p_position integer,
+  p_title text,
+  p_body_html text,
+  p_quiz jsonb default '[]'::jsonb,
+  p_project text default null
+)
+returns public.learning_lessons
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_level integer; v_lesson public.learning_lessons;
+begin
+  v_level := public.role_level(public.current_profile_role());
+  if v_level < 2 then raise exception 'admin course management requires role level 2+'; end if;
+  if p_position is null or p_position < 1 then raise exception 'lesson position must be greater than 0'; end if;
+  if not exists(select 1 from public.learning_lessons where id=p_lesson_id) then raise exception 'lesson not found'; end if;
+  update public.learning_lessons
+     set position=p_position,
+         title=trim(p_title),
+         body_html=coalesce(p_body_html,''),
+         quiz=coalesce(p_quiz,'[]'::jsonb),
+         project=p_project,
+         updated_at=now()
+   where id=p_lesson_id
+   returning * into v_lesson;
+  return v_lesson;
+end;
+$$;
+
 create or replace function public.admin_publish_lesson(p_lesson_id uuid)
 returns public.learning_lessons
 language plpgsql
@@ -160,10 +192,12 @@ revoke all on function public.admin_create_course(text,text,text,text,text,boole
 revoke all on function public.admin_publish_course(uuid) from public;
 revoke all on function public.admin_archive_course(uuid) from public;
 revoke all on function public.admin_add_lesson(uuid,integer,text,text,jsonb,text) from public;
+revoke all on function public.admin_update_lesson(uuid,integer,text,text,jsonb,text) from public;
 revoke all on function public.admin_publish_lesson(uuid) from public;
 
 grant execute on function public.admin_create_course(text,text,text,text,text,boolean,text) to authenticated;
 grant execute on function public.admin_publish_course(uuid) to authenticated;
 grant execute on function public.admin_archive_course(uuid) to authenticated;
 grant execute on function public.admin_add_lesson(uuid,integer,text,text,jsonb,text) to authenticated;
+grant execute on function public.admin_update_lesson(uuid,integer,text,text,jsonb,text) to authenticated;
 grant execute on function public.admin_publish_lesson(uuid) to authenticated;
