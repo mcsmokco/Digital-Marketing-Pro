@@ -77,11 +77,18 @@ New admin RPCs:
 - `admin_add_lesson()`
 - `admin_publish_lesson()`
 
-### Important deployment status
-**The migration has been committed to GitHub but has NOT been verified as applied to the live Supabase database yet.** Do not mark native course management live until the migration is actually applied and runtime-tested.
+### Deployment status — UPDATED 2026-10-03
+**The migration `20261003_learning_content.sql` was successfully executed in the live Supabase SQL Editor.**
+
+Verified live after execution:
+- `public.learning_courses` exists.
+- `public.learning_lessons` exists.
+- RLS is enabled on both tables (`rowsecurity = true`).
+
+The existing 12-module / 36-lesson catalog remains preserved.
 
 ### Admin UI status
-The Courses panel now has a native-course management shell and create/list/publish/archive controls. The UI calls the new Supabase store and shows a clear message if the migration is not yet present.
+The Courses panel has a native-course management shell and create/list/publish/archive controls. The UI calls the new Supabase store and shows a clear message if the migration is not present.
 
 ## 7. Content-generation direction
 User requirement: new digital-marketing courses/lessons should be **native content inside Digital Marketing Pro**, not external source links.
@@ -92,8 +99,8 @@ Target flow:
 Do not auto-publish unreviewed AI content. The automatic generation engine is intentionally **not claimed complete yet**; it should be added as a separate, tested layer after the native content store is verified.
 
 ## 8. Known incomplete work
-1. Apply and verify `20261003_learning_content.sql` on live Supabase.
-2. Runtime-test native Course Management with Owner/Admin/Co Admin and lower roles.
+1. Verify native Course Management runtime in the live app.
+2. Verify native Course Management RPC authorization with Owner/Admin/Co Admin and lower roles.
 3. Add lesson editor/lesson management to the native store.
 4. Build the automatic original-content generation pipeline without external learner redirects.
 5. Decide and implement a free/low-cost generation strategy; do not introduce an unapproved paid API.
@@ -130,16 +137,24 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 8. Only then continue.
 
 ## 12. Current next action
-**Apply `supabase/migrations/20261003_learning_content.sql` to the live Supabase project, then verify the native Courses panel and RPC authorization.** After that, implement lesson management before the automatic generation engine.
+**Verify the native Courses panel in the live website and verify the new admin RPC authorization.** After that, implement lesson management before the automatic generation engine.
 
 ## 13. Verification status
 - Static repository changes: committed.
-- Live Supabase migration: **NOT VERIFIED**.
+- Live Supabase migration: **APPLIED AND VERIFIED**.
+- Live tables: `learning_courses` and `learning_lessons` confirmed present.
+- Live RLS: enabled on both native learning tables.
 - Browser runtime: **NOT VERIFIED in this step**.
 - Existing RBAC implementation: preserved; no rewrite performed.
 - Existing 36-lesson catalog: preserved.
 
 ## Change log
+### 2026-10-03 — Live native learning schema verification
+- Executed `20261003_learning_content.sql` in the live Supabase SQL Editor successfully.
+- Verified `learning_courses` and `learning_lessons` exist.
+- Verified RLS is enabled on both tables.
+- Next checkpoint is live Admin Courses runtime/RPC verification.
+
 ### 2026-10-03 — Native Courses foundation
 - Added additive native learning-content schema and RLS/RPC controls.
 - Added Admin Courses management shell with create/list/publish/archive actions.
