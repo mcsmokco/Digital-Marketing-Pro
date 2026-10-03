@@ -173,6 +173,7 @@
   async function loadLessons(courseId){
     const out = $('workspaceLessons');
     const count = $('workspaceLessonCount');
+    client = await getClient();
     if(!out || !client) return;
 
     const {data,error} = await client.rpc('admin_list_course_lessons', {p_course_id: courseId});
@@ -257,7 +258,7 @@
     closeWorkspace();
   }
 
-  function openNativeLessonEditor(lesson, courseId){
+  async function openNativeLessonEditor(lesson, courseId){
     client = await getClient();
     if(!lesson || !client) return;
 
