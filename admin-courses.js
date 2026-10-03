@@ -17,7 +17,13 @@
     return null;
   }
 
+  function actorLevel(){
+    const role = typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(window.__DMP_ADMIN_PROFILE || {}) : 'user';
+    return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
+  }
+
   function renderShell(){
+    if(actorLevel() < 2) return;
     const panel = $('courses');
     if(!panel || panel.dataset.nativeCoursesReady) return;
     panel.dataset.nativeCoursesReady='1';
@@ -70,7 +76,8 @@
   }
 
   function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-  document.addEventListener('DOMContentLoaded',()=>{
+  document.addEventListener('DOMContentLoaded',async()=>{
+    if(actorLevel() < 2) return;
     renderShell();
     $('courseCreateForm')?.addEventListener('submit',createCourse);
     loadCourses();
