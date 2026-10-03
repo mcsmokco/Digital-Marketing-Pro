@@ -258,9 +258,8 @@
     closeWorkspace();
   }
 
-  async function openNativeLessonEditor(lesson, courseId){
-    client = await getClient();
-    if(!lesson || !client) return;
+  function openNativeLessonEditor(lesson, courseId){
+    if(!lesson) return;
 
     const modal = document.createElement('div');
     modal.className = 'lesson-editor-overlay';
@@ -335,6 +334,9 @@
 
       status.textContent = 'جاري حفظ التعديلات...';
       form.querySelector('button[type="submit"]').disabled = true;
+
+      client = await getClient();
+      if(!client){ status.textContent = '❌ Supabase غير متاح'; form.querySelector('button[type="submit"]').disabled = false; return; }
 
       const {error} = await client.rpc('admin_update_lesson', {
         p_lesson_id: lesson.id,
