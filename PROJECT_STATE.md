@@ -16,7 +16,7 @@ Digital Marketing Pro is an Arabic-first digital marketing learning platform wit
 - `lessons.js`: current native/static lesson catalog. **Do not replace it casually.**
 - `admin.html`: protected/no-index admin dashboard with users plus Course/Premium/Certificate sections.
 - `admin-courses.js` + `admin-courses.css`: native course-management layer. It is additive and does not replace the existing 36-lesson catalog.
-- `admin-course-workspace.js` + `admin-course-workspace.css`: native Course Workspace with lesson listing, draft lesson creation and professional preview.
+- `admin-course-workspace.js` + `admin-course-workspace.css`: native Course Workspace with lesson listing, draft lesson creation, professional preview and Lesson Editor.
 - `chat.html/js/css`: community chat subsystem; stabilized for mobile. Do not rewrite casually.
 - `auth-v7.js`: Supabase auth/session, signup/login/reset, profile setup, login metadata and admin entry.
 - `admin-role.js`: role hierarchy and UI convenience helpers.
@@ -76,6 +76,7 @@ New admin RPCs:
 - `admin_publish_course()`
 - `admin_archive_course()`
 - `admin_add_lesson()`
+- `admin_update_lesson()`
 - `admin_publish_lesson()`
 - `admin_list_courses()`
 - `admin_list_course_lessons()`
@@ -88,11 +89,15 @@ Verified live after execution:
 - `public.learning_lessons` exists.
 - RLS is enabled on both tables (`rowsecurity = true`).
 - `public.admin_list_course_lessons(uuid)` was created live and verified after an initial missing-function check.
+- `public.admin_update_lesson(uuid,integer,text,text,jsonb,text)` was created live and verified.
+- The update RPC requires role level 2+ internally.
+- Function EXECUTE was explicitly revoked from `anon`; authenticated execution remains intended.
+- The live ACL was checked during security verification.
 
 The existing 12-module / 36-lesson catalog remains preserved.
 
 ### Admin UI status
-The Courses panel has native-course management and the Course Workspace opens from `فتح الكورس`. The Workspace supports lesson listing, draft creation and preview without publishing.
+The Courses panel has native-course management and the Course Workspace opens from `فتح الكورس`. The Workspace supports lesson listing, draft creation, preview and Lesson Editor without automatically publishing edits.
 
 ### Verified test course
 - Course: `Digital Marketing Fundamentals`
@@ -103,6 +108,7 @@ The Courses panel has native-course management and the Course Workspace opens fr
 - First lesson created as Draft:
   `ما هو التسويق الرقمي؟ ولماذا أصبح ضرورياً؟`
 - Lesson position: 1
+- Lesson Editor: **VERIFIED SUCCESSFULLY** for editing and saving a real lesson change.
 - Preview: **VERIFIED SUCCESSFULLY (100/100)**.
 - Preview was confirmed to display the course and lesson content correctly.
 
@@ -116,7 +122,7 @@ Do not auto-publish unreviewed AI content. The automatic generation engine is in
 
 ## 8. Known incomplete work
 1. Verify native Course Management RPC authorization with Owner/Admin/Co Admin and lower roles.
-2. Add professional lesson editor/lesson management to the native store.
+2. Complete Lesson Editor/Lesson Management hardening and full RBAC tests.
 3. Build the automatic original-content generation pipeline without external learner redirects.
 4. Decide and implement a free/low-cost generation strategy; do not introduce an unapproved paid API.
 5. Live end-to-end RBAC test matrix.
@@ -152,7 +158,7 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 8. Only then continue.
 
 ## 12. Current next action
-**Build the professional Lesson Editor/Lesson Management layer.** It should allow editing the lesson title, position, HTML content, project and quiz data, while preserving Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
+**Harden and complete Lesson Editor/Lesson Management authorization and then run the live RBAC test matrix.** Preserve Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
 
 ## 13. Verification status
 - Static repository changes: committed.
@@ -160,6 +166,8 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 - Live tables: `learning_courses` and `learning_lessons` confirmed present.
 - Live RLS: enabled on both native learning tables.
 - Live `admin_list_course_lessons(uuid)`: **CREATED AND VERIFIED**.
+- Live `admin_update_lesson(uuid,integer,text,text,jsonb,text)`: **CREATED, SAVED AND SECURITY-CHECKED**.
+- Lesson Editor browser runtime: **VERIFIED** for real edit/save.
 - Course Workspace browser runtime: **VERIFIED**.
 - First native test lesson creation: **VERIFIED**.
 - Course Preview: **VERIFIED SUCCESSFULLY (100/100)**.
@@ -168,6 +176,14 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 - Full RBAC runtime matrix: pending.
 
 ## Change log
+### 2026-10-03 — Lesson Editor + RPC security verification
+- Added the secure `admin_update_lesson(...)` RPC to the native learning-content migration.
+- Applied the RPC live in Supabase SQL Editor and verified its presence/signature.
+- Verified real Lesson Editor editing and saving against the live database.
+- Checked function ACLs and explicitly revoked EXECUTE from `anon`.
+- Confirmed the RPC retains an internal role-level 2+ authorization check.
+- Next checkpoint: finish Lesson Management hardening and execute the live RBAC matrix.
+
 ### 2026-10-03 — Course Workspace + Preview runtime verification
 - Opened the existing draft course through the native Course Workspace.
 - Verified the live `admin_list_course_lessons(uuid)` RPC after creating it in Supabase.
