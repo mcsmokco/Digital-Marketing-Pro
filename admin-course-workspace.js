@@ -2,7 +2,7 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const client = window.supabaseClient || window.supabase || null;
+  const client = window.supabaseClient || null;
   let activeCourse = null;
 
   function escapeHtml(v){
