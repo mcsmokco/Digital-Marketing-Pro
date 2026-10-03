@@ -17,13 +17,22 @@
     return null;
   }
 
-  function actorLevel(){
-    const role = typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(window.__DMP_ADMIN_PROFILE || {}) : 'user';
-    return typeof window.DMP_ROLE_LEVEL === 'function' ? window.DMP_ROLE_LEVEL(role) : 0;
+  async function getActorLevel(){
+    const profile = window.__DMP_ADMIN_PROFILE || null;
+    if(profile && typeof window.DMP_GET_ROLE === 'function' && typeof window.DMP_ROLE_LEVEL === 'function'){
+      return window.DMP_ROLE_LEVEL(window.DMP_GET_ROLE(profile));
+    }
+    const c = await getClient();
+    if(!c || typeof window.DMP_ROLE_LEVEL !== 'function') return 0;
+    const {data:{session}} = await c.auth.getSession();
+    if(!session?.user) return 0;
+    const {data,error} = await c.from('profiles').select('role').eq('id',session.user.id).maybeSingle();
+    if(error) return 0;
+    const role = typeof window.DMP_GET_ROLE === 'function' ? window.DMP_GET_ROLE(data || {}) : 'user';
+    return window.DMP_ROLE_LEVEL(role);
   }
 
   function renderShell(){
-    if(actorLevel() < 2) return;
     const panel = $('courses');
     if(!panel || panel.dataset.nativeCoursesReady) return;
     panel.dataset.nativeCoursesReady='1';
@@ -55,7 +64,7 @@
     out.innerHTML=data.map(course=>`<article class="native-course-row"><div><strong>${escapeHtml(course.title)}</strong><small>${escapeHtml(course.level)} · ${escapeHtml(course.status)} · ${course.is_premium?'💎 Premium':'🆓 Free'}</small></div><div><button class="small-btn" data-open-course="${course.id}">فتح الكورس</button>${course.status==='draft'?`<button class="small-btn" data-publish="${course.id}">نشر</button>`:''}${course.status!=='archived'?`<button class="small-btn" data-archive="${course.id}">أرشفة</button>`:''}</div></article>`).join('');
     out.querySelectorAll('[data-publish]').forEach(b=>b.onclick=()=>courseAction('admin_publish_course',b.dataset.publish));
     out.querySelectorAll('[data-open-course]').forEach(b=>b.onclick=()=>{ const course=data.find(x=>x.id===b.dataset.openCourse); if(course && window.openNativeCourseWorkspace) window.openNativeCourseWorkspace(course); });
-    out.querySelectorAll('[data-archive]').forEach(b=>b.onclick=()=>courseAction('admin_archive_course',b.dataset.publish || b.dataset.archive));
+    out.querySelectorAll('[data-archive]').forEach(b=>b.onclick=()=>courseAction('admin_archive_course',b.dataset.archive));
   }
 
   async function courseAction(fn,id){
@@ -76,10 +85,14 @@
   }
 
   function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-  document.addEventListener('DOMContentLoaded',async()=>{
-    if(actorLevel() < 2) return;
+
+  async function initNativeCourses(){
+    const level = await getActorLevel();
+    if(level < 2) return;
     renderShell();
     $('courseCreateForm')?.addEventListener('submit',createCourse);
-    loadCourses();
-  });
+    await loadCourses();
+  }
+
+  document.addEventListener('DOMContentLoaded',initNativeCourses,{once:true});
 })();
