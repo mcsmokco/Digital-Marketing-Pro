@@ -186,10 +186,18 @@
           <small>${lesson.status === 'published' ? '🟢 منشور' : lesson.status === 'archived' ? '⚫ مؤرشف' : '🟡 مسودة'} · ${lesson.body_html ? 'محتوى موجود' : 'فارغ'}</small>
         </div>
         <div class="lesson-actions">
+          <button class="small-btn" data-edit-lesson="${lesson.id}">✏️ تعديل</button>
           ${lesson.status === 'draft' ? '<button class="small-btn" data-publish-lesson="'+lesson.id+'">نشر</button>' : ''}
         </div>
       </article>
     `).join('');
+
+    out.querySelectorAll('[data-edit-lesson]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lesson = data.find(x => String(x.id) === String(btn.dataset.editLesson));
+        if (lesson) window.openNativeLessonEditor?.(lesson, courseId);
+      });
+    });
 
     out.querySelectorAll('[data-publish-lesson]').forEach(btn => {
       btn.addEventListener('click', async () => {
