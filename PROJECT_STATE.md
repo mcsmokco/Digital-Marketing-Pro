@@ -137,7 +137,7 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 8. Only then continue.
 
 ## 12. Current next action
-**Verify the native Courses panel in the live website and verify the new admin RPC authorization.** After that, implement lesson management before the automatic generation engine.
+**Verify the new Course Workspace in the live website.** Open the existing draft course, confirm lesson listing/creation and RBAC behavior, then continue with lesson editing/preview before the automatic generation engine.
 
 ## 13. Verification status
 - Static repository changes: committed.
@@ -165,3 +165,12 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 ### 2026-10-02 — Durable checkpoint + audit
 - Audited repository metadata, public app, admin app, auth, role helpers, admin logic and Supabase SQL/migrations.
 - Created durable `PROJECT_STATE.md` and `AUDIT-REPORT-2026-10-02.md`.
+
+
+### 2026-10-03 — Course Workspace foundation
+- Added secure admin RPCs for listing courses and course lessons, using the existing role-level 2+ authorization model.
+- Added a dedicated Course Workspace UI with course metadata, lesson list, lesson draft creation and publish actions.
+- Added responsive Workspace styling and wired the Workspace into `admin.html`.
+- Added a `فتح الكورس` action to native course cards.
+- Existing learning tables, learner RLS, original lesson catalog and role hierarchy were left untouched.
+- Browser runtime verification is still pending.
