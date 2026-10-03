@@ -5,7 +5,7 @@
 > **Last checkpoint:** 2026-10-03
 > **Default branch:** `main`
 > **Repository:** `mcsmokco/Digital-Marketing-Pro`
->
+
 ---
 
 ## 1. Mission
@@ -15,7 +15,8 @@ Digital Marketing Pro is an Arabic-first digital marketing learning platform wit
 - `index.html`: public learning/landing site with 12 units, lesson UI, progress hooks, auth/account UI, notifications, chat drawer and Premium presentation.
 - `lessons.js`: current native/static lesson catalog. **Do not replace it casually.**
 - `admin.html`: protected/no-index admin dashboard with users plus Course/Premium/Certificate sections.
-- `admin-courses.js` + `admin-courses.css`: new native course-management layer. It is additive and does not replace the existing 36-lesson catalog.
+- `admin-courses.js` + `admin-courses.css`: native course-management layer. It is additive and does not replace the existing 36-lesson catalog.
+- `admin-course-workspace.js` + `admin-course-workspace.css`: native Course Workspace with lesson listing, draft lesson creation and professional preview.
 - `chat.html/js/css`: community chat subsystem; stabilized for mobile. Do not rewrite casually.
 - `auth-v7.js`: Supabase auth/session, signup/login/reset, profile setup, login metadata and admin entry.
 - `admin-role.js`: role hierarchy and UI convenience helpers.
@@ -76,6 +77,8 @@ New admin RPCs:
 - `admin_archive_course()`
 - `admin_add_lesson()`
 - `admin_publish_lesson()`
+- `admin_list_courses()`
+- `admin_list_course_lessons()`
 
 ### Deployment status — UPDATED 2026-10-03
 **The migration `20261003_learning_content.sql` was successfully executed in the live Supabase SQL Editor.**
@@ -84,11 +87,24 @@ Verified live after execution:
 - `public.learning_courses` exists.
 - `public.learning_lessons` exists.
 - RLS is enabled on both tables (`rowsecurity = true`).
+- `public.admin_list_course_lessons(uuid)` was created live and verified after an initial missing-function check.
 
 The existing 12-module / 36-lesson catalog remains preserved.
 
 ### Admin UI status
-The Courses panel has a native-course management shell and create/list/publish/archive controls. The UI calls the new Supabase store and shows a clear message if the migration is not present.
+The Courses panel has native-course management and the Course Workspace opens from `فتح الكورس`. The Workspace supports lesson listing, draft creation and preview without publishing.
+
+### Verified test course
+- Course: `Digital Marketing Fundamentals`
+- Slug: `digital-marketing-fundamentals`
+- Level: Beginner
+- Status: Draft
+- Premium: Free
+- First lesson created as Draft:
+  `ما هو التسويق الرقمي؟ ولماذا أصبح ضرورياً؟`
+- Lesson position: 1
+- Preview: **VERIFIED SUCCESSFULLY (100/100)**.
+- Preview was confirmed to display the course and lesson content correctly.
 
 ## 7. Content-generation direction
 User requirement: new digital-marketing courses/lessons should be **native content inside Digital Marketing Pro**, not external source links.
@@ -99,17 +115,16 @@ Target flow:
 Do not auto-publish unreviewed AI content. The automatic generation engine is intentionally **not claimed complete yet**; it should be added as a separate, tested layer after the native content store is verified.
 
 ## 8. Known incomplete work
-1. Verify native Course Management runtime in the live app.
-2. Verify native Course Management RPC authorization with Owner/Admin/Co Admin and lower roles.
-3. Add lesson editor/lesson management to the native store.
-4. Build the automatic original-content generation pipeline without external learner redirects.
-5. Decide and implement a free/low-cost generation strategy; do not introduce an unapproved paid API.
-6. Live end-to-end RBAC test matrix.
-7. Reconcile live Supabase function/policy/schema inventory with Git.
-8. Finish Admin Premium Management and payment.
-9. Finish Admin Certificate Management.
-10. Final mobile/desktop production QA.
-11. Verify unwanted redirects/navigation without weakening security boundaries.
+1. Verify native Course Management RPC authorization with Owner/Admin/Co Admin and lower roles.
+2. Add professional lesson editor/lesson management to the native store.
+3. Build the automatic original-content generation pipeline without external learner redirects.
+4. Decide and implement a free/low-cost generation strategy; do not introduce an unapproved paid API.
+5. Live end-to-end RBAC test matrix.
+6. Reconcile live Supabase function/policy/schema inventory with Git.
+7. Finish Admin Premium Management and payment.
+8. Finish Admin Certificate Management.
+9. Final mobile/desktop production QA.
+10. Verify unwanted redirects/navigation without weakening security boundaries.
 
 ## 9. RBAC runtime test matrix — NOT YET EXECUTED
 Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility, management limits, Owner protection, self-protection, RPC enforcement, refresh, logout/login and direct `admin.html` access.
@@ -137,23 +152,43 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 8. Only then continue.
 
 ## 12. Current next action
-**Verify the new Course Workspace in the live website.** Open the existing draft course, confirm lesson listing/creation and RBAC behavior, then continue with lesson editing/preview before the automatic generation engine.
+**Build the professional Lesson Editor/Lesson Management layer.** It should allow editing the lesson title, position, HTML content, project and quiz data, while preserving Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
 
 ## 13. Verification status
 - Static repository changes: committed.
 - Live Supabase migration: **APPLIED AND VERIFIED**.
 - Live tables: `learning_courses` and `learning_lessons` confirmed present.
 - Live RLS: enabled on both native learning tables.
-- Browser runtime: **NOT VERIFIED in this step**.
+- Live `admin_list_course_lessons(uuid)`: **CREATED AND VERIFIED**.
+- Course Workspace browser runtime: **VERIFIED**.
+- First native test lesson creation: **VERIFIED**.
+- Course Preview: **VERIFIED SUCCESSFULLY (100/100)**.
 - Existing RBAC implementation: preserved; no rewrite performed.
 - Existing 36-lesson catalog: preserved.
+- Full RBAC runtime matrix: pending.
 
 ## Change log
+### 2026-10-03 — Course Workspace + Preview runtime verification
+- Opened the existing draft course through the native Course Workspace.
+- Verified the live `admin_list_course_lessons(uuid)` RPC after creating it in Supabase.
+- Created the first native lesson as Draft.
+- Verified the professional Course Preview displays the lesson correctly.
+- Confirmed Preview is read-only and does not publish/mutate the course.
+- Runtime result: **SUCCESS / 100/100**.
+- Next checkpoint: professional Lesson Editor/Lesson Management.
+
+### 2026-10-03 — Course Workspace foundation
+- Added secure admin RPCs for listing courses and course lessons, using the existing role-level 2+ authorization model.
+- Added a dedicated Course Workspace UI with course metadata, lesson list, lesson draft creation and publish actions.
+- Added responsive Workspace styling and wired the Workspace into `admin.html`.
+- Added a `فتح الكورس` action to native course cards.
+- Existing learning tables, learner RLS, original lesson catalog and role hierarchy were left untouched.
+
 ### 2026-10-03 — Live native learning schema verification
 - Executed `20261003_learning_content.sql` in the live Supabase SQL Editor successfully.
 - Verified `learning_courses` and `learning_lessons` exist.
 - Verified RLS is enabled on both tables.
-- Next checkpoint is live Admin Courses runtime/RPC verification.
+- Next checkpoint was live Admin Courses runtime/RPC verification.
 
 ### 2026-10-03 — Native Courses foundation
 - Added additive native learning-content schema and RLS/RPC controls.
@@ -165,12 +200,3 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 ### 2026-10-02 — Durable checkpoint + audit
 - Audited repository metadata, public app, admin app, auth, role helpers, admin logic and Supabase SQL/migrations.
 - Created durable `PROJECT_STATE.md` and `AUDIT-REPORT-2026-10-02.md`.
-
-
-### 2026-10-03 — Course Workspace foundation
-- Added secure admin RPCs for listing courses and course lessons, using the existing role-level 2+ authorization model.
-- Added a dedicated Course Workspace UI with course metadata, lesson list, lesson draft creation and publish actions.
-- Added responsive Workspace styling and wired the Workspace into `admin.html`.
-- Added a `فتح الكورس` action to native course cards.
-- Existing learning tables, learner RLS, original lesson catalog and role hierarchy were left untouched.
-- Browser runtime verification is still pending.
