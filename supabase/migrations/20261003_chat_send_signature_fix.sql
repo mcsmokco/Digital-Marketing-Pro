@@ -1,9 +1,14 @@
 -- Digital Marketing Pro — chat send signature compatibility fix
--- Frontend currently sends reply_message_id with send_chat_message().
--- Keep the existing secure 2-argument implementation and add a 3-argument
--- compatibility overload so message sending works without weakening security.
+-- Frontend sends reply_message_id with send_chat_message().
+-- The base chat function is the secure 2-argument implementation.
+-- Recreate the 3-argument compatibility overload explicitly so any
+-- pre-existing default parameters cannot conflict with this signature.
 
-create or replace function public.send_chat_message(
+begin;
+
+drop function if exists public.send_chat_message(text, text, uuid);
+
+create function public.send_chat_message(
   chat_room text,
   message_body text,
   reply_message_id uuid
@@ -22,3 +27,5 @@ $$;
 
 revoke all on function public.send_chat_message(text,text,uuid) from public, anon;
 grant execute on function public.send_chat_message(text,text,uuid) to authenticated;
+
+commit;
