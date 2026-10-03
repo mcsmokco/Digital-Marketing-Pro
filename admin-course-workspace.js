@@ -260,6 +260,7 @@
 
   function openNativeLessonEditor(lesson, courseId){
     if(!lesson) return;
+    try {
 
     const modal = document.createElement('div');
     modal.className = 'lesson-editor-overlay';
@@ -359,6 +360,12 @@
         loadLessons(courseId);
       }, 500);
     });
+  }
+
+    } catch(err) {
+      console.error('Lesson editor error:', err);
+      alert('تعذر فتح محرر الدرس: ' + (err?.message || err));
+    }
   }
 
   function closeWorkspace(){
