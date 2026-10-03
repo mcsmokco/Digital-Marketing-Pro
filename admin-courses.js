@@ -43,12 +43,12 @@
     const out = $('nativeCoursesList');
     if(!out) return;
     if(!c){ out.textContent='تعذر تهيئة Supabase.'; return; }
-    const {data,error}=await c.from('learning_courses').select('id,title,slug,level,status,is_premium,content_source,created_at').order('created_at',{ascending:false});
-    if(error){ out.textContent='المخزن الجديد لم يُفعّل بعد في Supabase. طبّق migration 20261003_learning_content.sql أولاً.'; return; }
+    const {data,error}=await c.rpc('admin_list_courses');
+    if(error){ out.textContent='تعذر تحميل الكورسات: '+error.message; return; }
     if(!data.length){ out.textContent='لا توجد كورسات جديدة بعد.'; return; }
     out.innerHTML=data.map(course=>`<article class="native-course-row"><div><strong>${escapeHtml(course.title)}</strong><small>${escapeHtml(course.level)} · ${escapeHtml(course.status)} · ${course.is_premium?'💎 Premium':'🆓 Free'}</small></div><div>${course.status==='draft'?`<button class="small-btn" data-publish="${course.id}">نشر</button>`:''}${course.status!=='archived'?`<button class="small-btn" data-archive="${course.id}">أرشفة</button>`:''}</div></article>`).join('');
     out.querySelectorAll('[data-publish]').forEach(b=>b.onclick=()=>courseAction('admin_publish_course',b.dataset.publish));
-    out.querySelectorAll('[data-archive]').forEach(b=>b.onclick=()=>courseAction('admin_archive_course',b.dataset.archive));
+    out.querySelectorAll('[data-archive]').forEach(b=>b.onclick=()=>courseAction('admin_archive_course',b.dataset.publish || b.dataset.archive));
   }
 
   async function courseAction(fn,id){
