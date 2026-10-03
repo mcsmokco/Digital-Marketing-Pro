@@ -355,6 +355,7 @@
     document.getElementById('courses')?.scrollIntoView({behavior:'smooth'});
   }
 
-  window.openNativeLessonEditor = openNativeLessonEditor;\n  window.openNativeCourseWorkspace = renderWorkspace;
+  window.openNativeLessonEditor = openNativeLessonEditor;
+  window.openNativeCourseWorkspace = renderWorkspace;
   window.closeNativeCourseWorkspace = closeWorkspace;
 })();
