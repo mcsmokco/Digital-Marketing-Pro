@@ -93,11 +93,12 @@ Verified live after execution:
 - The update RPC requires role level 2+ internally.
 - Function EXECUTE was explicitly revoked from `anon`; authenticated execution remains intended.
 - The live ACL was checked during security verification.
+- Live EXECUTE ACL hardening was completed for `admin_create_course`, `admin_add_lesson`, `admin_publish_course`, `admin_archive_course`, `admin_publish_lesson`, and `admin_update_lesson`: `anon` is denied while `authenticated` remains executable; each listed RPC was verified with `has_function_privilege` as `false | true`.
 
 The existing 12-module / 36-lesson catalog remains preserved.
 
 ### Admin UI status
-The Courses panel has native-course management and the Course Workspace opens from `فتح الكورس`. The Workspace supports lesson listing, draft creation, preview and Lesson Editor without automatically publishing edits.
+The Courses panel has native-course management and the Course Workspace opens from `فتح الكورس`. RBAC visibility was verified in the browser: User does not see Courses; Modérateur does not see Courses/Create Course; Administrateur can see and use Courses. The latest `admin-courses.js` guard prevents lower roles from rendering the course-management shell. The Workspace supports lesson listing, draft creation, preview and Lesson Editor without automatically publishing edits.
 
 ### Verified test course
 - Course: `Digital Marketing Fundamentals`
@@ -121,7 +122,8 @@ Target flow:
 Do not auto-publish unreviewed AI content. The automatic generation engine is intentionally **not claimed complete yet**; it should be added as a separate, tested layer after the native content store is verified.
 
 ## 8. Known incomplete work
-1. Verify native Course Management RPC authorization with Owner/Admin/Co Admin and lower roles.
+1. Complete the full live RBAC matrix for Owner/Admin/Co Admin/Administrateur/Modérateur/User, including direct RPC attempts and UI visibility.
+2. Verify native Course Management RPC authorization across all role levels beyond the `anon` ACL checks already completed.
 2. Complete Lesson Editor/Lesson Management hardening and full RBAC tests.
 3. Build the automatic original-content generation pipeline without external learner redirects.
 4. Decide and implement a free/low-cost generation strategy; do not introduce an unapproved paid API.
@@ -132,8 +134,8 @@ Do not auto-publish unreviewed AI content. The automatic generation engine is in
 9. Final mobile/desktop production QA.
 10. Verify unwanted redirects/navigation without weakening security boundaries.
 
-## 9. RBAC runtime test matrix — NOT YET EXECUTED
-Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility, management limits, Owner protection, self-protection, RPC enforcement, refresh, logout/login and direct `admin.html` access.
+## 9. RBAC runtime test matrix — PARTIALLY EXECUTED
+Browser checks completed: User hides Courses; Modérateur hides Courses/Create Course; Administrateur sees Courses. RPC ACL checks completed for the six native course/lesson management functions listed above. Full role-by-role runtime matrix, direct RPC enforcement under each authenticated role, refresh/logout/login and direct `admin.html` access remain pending.
 
 ## 10. Things not to redo without evidence
 - Main public learning structure.
@@ -158,7 +160,7 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 8. Only then continue.
 
 ## 12. Current next action
-**Harden and complete Lesson Editor/Lesson Management authorization and then run the live RBAC test matrix.** Preserve Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
+**Run the full live RBAC matrix across all authenticated roles and verify direct RPC enforcement.** Preserve Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
 
 ## 13. Verification status
 - Static repository changes: committed.
@@ -172,10 +174,20 @@ Test Owner, Admin, Co Admin, Administrateur, Modérateur and User for visibility
 - First native test lesson creation: **VERIFIED**.
 - Course Preview: **VERIFIED SUCCESSFULLY (100/100)**.
 - Existing RBAC implementation: preserved; no rewrite performed.
+- Course-management UI RBAC guard: **VERIFIED** for User/Modérateur/Administrateur.
+- Native management RPC ACL hardening: **VERIFIED** (`anon=false`, `authenticated=true`) for create/add/publish/archive/publish-lesson/update-lesson.
 - Existing 36-lesson catalog: preserved.
 - Full RBAC runtime matrix: pending.
 
 ## Change log
+## 2026-10-03 — Native management RPC ACL hardening + RBAC UI verification
+- Verified and hardened EXECUTE ACLs for the native course/lesson management RPCs.
+- Explicitly revoked `anon` EXECUTE from `admin_create_course`, `admin_add_lesson`, `admin_publish_course`, `admin_archive_course`, and `admin_publish_lesson`.
+- `admin_update_lesson` had already been explicitly revoked from `anon` in the previous checkpoint.
+- Verified each hardened RPC with `has_function_privilege`: `anon=false`, `authenticated=true`.
+- Browser RBAC verification: User does not see Courses; Modérateur does not see Courses/Create Course; Administrateur sees Courses and the native course-management UI.
+- Updated course UI guard so lower roles do not render the management shell.
+- Next action: complete the authenticated role-by-role RBAC matrix and direct RPC enforcement tests.
 ### 2026-10-03 — Lesson Editor + RPC security verification
 - Added the secure `admin_update_lesson(...)` RPC to the native learning-content migration.
 - Applied the RPC live in Supabase SQL Editor and verified its presence/signature.
