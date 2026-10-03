@@ -46,8 +46,9 @@
     const {data,error}=await c.rpc('admin_list_courses');
     if(error){ out.textContent='تعذر تحميل الكورسات: '+error.message; return; }
     if(!data.length){ out.textContent='لا توجد كورسات جديدة بعد.'; return; }
-    out.innerHTML=data.map(course=>`<article class="native-course-row"><div><strong>${escapeHtml(course.title)}</strong><small>${escapeHtml(course.level)} · ${escapeHtml(course.status)} · ${course.is_premium?'💎 Premium':'🆓 Free'}</small></div><div>${course.status==='draft'?`<button class="small-btn" data-publish="${course.id}">نشر</button>`:''}${course.status!=='archived'?`<button class="small-btn" data-archive="${course.id}">أرشفة</button>`:''}</div></article>`).join('');
+    out.innerHTML=data.map(course=>`<article class="native-course-row"><div><strong>${escapeHtml(course.title)}</strong><small>${escapeHtml(course.level)} · ${escapeHtml(course.status)} · ${course.is_premium?'💎 Premium':'🆓 Free'}</small></div><div><button class="small-btn" data-open-course="${course.id}">فتح الكورس</button>${course.status==='draft'?`<button class="small-btn" data-publish="${course.id}">نشر</button>`:''}${course.status!=='archived'?`<button class="small-btn" data-archive="${course.id}">أرشفة</button>`:''}</div></article>`).join('');
     out.querySelectorAll('[data-publish]').forEach(b=>b.onclick=()=>courseAction('admin_publish_course',b.dataset.publish));
+    out.querySelectorAll('[data-open-course]').forEach(b=>b.onclick=()=>{ const course=data.find(x=>x.id===b.dataset.openCourse); if(course && window.openNativeCourseWorkspace) window.openNativeCourseWorkspace(course); });
     out.querySelectorAll('[data-archive]').forEach(b=>b.onclick=()=>courseAction('admin_archive_course',b.dataset.publish || b.dataset.archive));
   }
 
