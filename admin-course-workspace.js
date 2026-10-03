@@ -88,10 +88,76 @@
     $('lessonCreateForm')?.addEventListener('submit', createLesson);
     $('workspacePublishBtn')?.addEventListener('click', () => courseAction('admin_publish_course', course.id));
     $('workspaceArchiveBtn')?.addEventListener('click', () => courseAction('admin_archive_course', course.id));
-    $('coursePreviewBtn')?.addEventListener('click', () => alert('المعاينة ستُفعّل في المرحلة التالية بعد بناء صفحة عرض الدرس.'));
+    $('coursePreviewBtn')?.addEventListener('click', () => openCoursePreview(course));
 
     loadLessons(course.id);
     window.scrollTo({top: panel.offsetTop - 20, behavior:'smooth'});
+  }
+
+  function sanitizeLessonHtml(html){
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(String(html || ''), 'text/html');
+    const allowed = new Set(['P','BR','STRONG','B','EM','I','U','H2','H3','H4','UL','OL','LI','BLOCKQUOTE','PRE','CODE','A','IMG','HR','TABLE','THEAD','TBODY','TR','TH','TD','DIV','SPAN']);
+    doc.body.querySelectorAll('*').forEach(el => {
+      if(!allowed.has(el.tagName)) { el.replaceWith(...Array.from(el.childNodes)); return; }
+      Array.from(el.attributes).forEach(attr => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || '';
+        if(name.startsWith('on') || name === 'style' || name === 'srcdoc') el.removeAttribute(attr.name);
+        if(name === 'href' && /^(javascript|data):/i.test(value)) el.removeAttribute(attr.name);
+        if(name === 'src' && /^(javascript|data):/i.test(value)) el.removeAttribute(attr.name);
+      });
+      if(el.tagName === 'A') { el.setAttribute('target','_blank'); el.setAttribute('rel','noopener noreferrer'); }
+    });
+    return doc.body.innerHTML;
+  }
+
+  function renderQuiz(quiz){
+    if(!Array.isArray(quiz) || !quiz.length) return '';
+    const items = quiz.map((q,i) => {
+      if(typeof q === 'string') return '<li><strong>سؤال '+(i+1)+'</strong><div>'+escapeHtml(q)+'</div></li>';
+      const question = q?.question || q?.title || q?.text || 'سؤال '+(i+1);
+      const options = Array.isArray(q?.options) ? '<ul>'+q.options.map(o => '<li>'+escapeHtml(typeof o === 'string' ? o : (o?.text || o?.label || ''))+'</li>').join('')+'</ul>' : '';
+      return '<li><strong>'+escapeHtml(question)+'</strong>'+options+'</li>';
+    }).join('');
+    return '<section class="preview-block"><span class="eyebrow">QUIZ</span><h4>اختبار الدرس</h4><ol class="preview-quiz">'+items+'</ol></section>';
+  }
+
+  async function openCoursePreview(course){
+    if(!client) return;
+    const {data,error} = await client.rpc('admin_list_course_lessons', {p_course_id: course.id});
+    if(error){ alert(error.message); return; }
+    const lessons = Array.isArray(data) ? data : [];
+    const modal = document.createElement('div');
+    modal.className = 'course-preview-overlay';
+    modal.innerHTML = '<div class="course-preview-modal" role="dialog" aria-modal="true" aria-label="معاينة الكورس">'+
+      '<button class="course-preview-close" type="button" aria-label="إغلاق">×</button>'+
+      '<div class="course-preview-hero"><span class="eyebrow">ADMIN PREVIEW · DRAFT SAFE</span>'+
+      '<h2>'+escapeHtml(course.title)+'</h2><p>'+escapeHtml(course.description || 'لا يوجد وصف لهذا الكورس بعد.')+'</p>'+
+      '<div class="course-preview-badges"><span>'+levelLabel(course.level)+'</span><span>'+(course.is_premium ? '💎 Premium' : '🆓 Free')+'</span><span>'+lessons.length+' درس</span></div></div>'+
+      '<div class="course-preview-layout"><aside class="course-preview-nav"><div class="preview-nav-title">محتوى الكورس</div>'+
+      (lessons.length ? lessons.map((lesson,i)=>'<button type="button" class="preview-lesson-tab'+(i===0?' active':'')+'" data-preview-lesson="'+lesson.id+'"><span>'+String(lesson.position).padStart(2,'0')+'</span><strong>'+escapeHtml(lesson.title)+'</strong><small>'+ (lesson.status === 'published' ? 'منشور' : lesson.status === 'archived' ? 'مؤرشف' : 'مسودة') +'</small></button>').join('') : '<div class="preview-no-lessons">مازال ما كاين حتى درس.</div>')+
+      '</aside><main id="coursePreviewContent" class="course-preview-content"></main></div></div>';
+    document.body.appendChild(modal);
+
+    const close=()=>{ modal.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey=(e)=>{ if(e.key==='Escape') close(); };
+    modal.querySelector('.course-preview-close')?.addEventListener('click',close);
+    modal.addEventListener('click',e=>{ if(e.target===modal) close(); });
+    document.addEventListener('keydown',onKey);
+
+    const content=modal.querySelector('#coursePreviewContent');
+    const showLesson=(lesson)=>{
+      if(!content) return;
+      const body=sanitizeLessonHtml(lesson?.body_html);
+      const project=lesson?.project ? '<section class="preview-block"><span class="eyebrow">PRACTICAL PROJECT</span><h4>المشروع / التطبيق</h4><div class="preview-project">'+escapeHtml(lesson.project).replace(/\n/g,'<br>')+'</div></section>' : '';
+      content.innerHTML = '<div class="preview-lesson-head"><span class="preview-position">LESSON '+String(lesson.position).padStart(2,'0')+'</span><span class="course-status-badge status-'+escapeHtml(lesson.status)+'">'+statusLabel(lesson.status)+'</span><h3>'+escapeHtml(lesson.title)+'</h3></div><article class="preview-lesson-body">'+(body || '<p class="preview-empty">هذا الدرس مازال بلا محتوى.</p>')+'</article>'+project+renderQuiz(lesson.quiz);
+    };
+    modal.querySelectorAll('[data-preview-lesson]').forEach(btn=>btn.addEventListener('click',()=>{
+      modal.querySelectorAll('.preview-lesson-tab').forEach(x=>x.classList.remove('active')); btn.classList.add('active');
+      const lesson=lessons.find(x=>String(x.id)===String(btn.dataset.previewLesson)); if(lesson) showLesson(lesson);
+    }));
+    if(lessons[0]) showLesson(lessons[0]); else if(content) content.innerHTML='<div class="preview-empty-state">أضف أول درس باش تبدا المعاينة.</div>';
   }
 
   async function loadLessons(courseId){
