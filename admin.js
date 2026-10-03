@@ -58,8 +58,17 @@
     const moderator = can(actorRole, 1), admin = can(actorRole, 4), coAdmin = can(actorRole, 3), owner = ownerOnly(actorRole);
     document.querySelectorAll('[data-min-role]').forEach(el => { el.hidden = levelOf(actorRole) < Number(el.dataset.minRole); });
     document.querySelectorAll('[data-owner-only]').forEach(el => { el.hidden = !owner; });
+    const courseManager = can(actorRole, 2);
     const courses = $('courses');
-    if (courses) courses.querySelectorAll('button').forEach(b => { b.disabled = !can(actorRole, 2); });
+    const courseWorkspace = $('courseWorkspace');
+    const coursesNav = document.querySelector('.admin-sidebar nav a[href="#courses"]');
+    if (courses) courses.hidden = !courseManager;
+    if (courseWorkspace && !courseManager) {
+      courseWorkspace.hidden = true;
+      courseWorkspace.innerHTML = '';
+    }
+    if (coursesNav) coursesNav.hidden = !courseManager;
+    if (courses) courses.querySelectorAll('button').forEach(b => { b.disabled = !courseManager; });
     const msg = $('usersMessage');
     if (msg) msg.textContent = owner ? '👑 Owner: جميع الصلاحيات، بما فيها بيانات الأجهزة والمتصفحات والبيانات الحساسة.' : admin ? '🛡️ Admin: إدارة المستخدمين والرتب الأدنى. بيانات Owner الحساسة مخفية.' : coAdmin ? '💎 Co Admin: إدارة الرتب الأدنى فقط. بيانات Owner الحساسة مخفية.' : moderator ? '🔧 Moderateur: صلاحيات إشراف محدودة، بدون تغيير الرتب. بيانات Owner الحساسة مخفية.' : '';
     setUsersPrivacyUi(owner);
