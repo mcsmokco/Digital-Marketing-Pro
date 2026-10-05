@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ping Supabase REST API
+      - name: Ping Supabase health endpoint
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -29,13 +29,13 @@ jobs:
           status=$(curl -sS -o /tmp/supabase-response.txt -w '%{http_code}' \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${base_url}/rest/v1/")
+            "${base_url}/auth/v1/health")
 
-          echo "Supabase REST API HTTP status: ${status}"
+          echo "Supabase Auth health HTTP status: ${status}"
 
           if [ "${status}" -lt 200 ] || [ "${status}" -ge 300 ]; then
             cat /tmp/supabase-response.txt
             exit 1
           fi
 
-          echo "Supabase Keep Alive check completed successfully."
+          echo "Supabase Keep Alive health check completed successfully."
