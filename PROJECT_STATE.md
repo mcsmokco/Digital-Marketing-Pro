@@ -2,7 +2,7 @@
 
 > **Purpose:** Durable project checkpoint. GitHub code + this file are the project continuity source of truth across ChatGPT conversations.
 >
-> **Last checkpoint:** 2026-10-03
+> **Last checkpoint:** 2026-10-06
 > **Default branch:** `main`
 > **Repository:** `mcsmokco/Digital-Marketing-Pro`
 
@@ -121,6 +121,25 @@ Target flow:
 
 Do not auto-publish unreviewed AI content. The automatic generation engine is intentionally **not claimed complete yet**; it should be added as a separate, tested layer after the native content store is verified.
 
+## 8. Chat subsystem checkpoint — 2026-10-06
+
+### Completed
+- Chat message sending was repaired end-to-end.
+- Live Supabase `send_chat_message(text,text)` was recreated as the secure implementation.
+- Frontend-compatible `send_chat_message(text,text,uuid)` overload was recreated and `authenticated` EXECUTE granted; `anon` EXECUTE revoked.
+- User/runtime verification confirmed: **message sending works**.
+
+### Current unresolved issue
+- The standalone Chat page emoji picker/button still does not work for the user.
+- Current GitHub `main` contains a single `click` listener for `#emojiBtn`; the earlier duplicate `pointerdown`/fallback conflict has been removed.
+- `chat.html` currently loads `chat-interactions.js?v=20261004-4`; no inline emoji fallback remains.
+- `chat.css` and `chat-mobile.css` both provide explicit picker visibility, z-index, pointer-events and mobile positioning rules.
+- Repository code inspection does **not** currently identify a database/RBAC cause for the picker problem.
+- Live deployed-page/browser interaction has not been directly verified from this environment, so deployment/runtime state must be checked before another code change.
+
+### Important diagnostic conclusion
+Do **not** repeat the previous `pointerdown`, duplicate-handler, fallback, cache-bump, or SQL changes without new evidence. The next test must distinguish **live deployment/browser state** from a remaining frontend runtime issue.
+
 ## 8. Known incomplete work
 1. Complete the full live RBAC matrix for Owner/Admin/Co Admin/Administrateur/Modérateur/User, including direct RPC attempts and UI visibility.
 2. Verify native Course Management RPC authorization across all role levels beyond the `anon` ACL checks already completed.
@@ -160,7 +179,7 @@ Browser checks completed: User hides Courses; Modérateur hides Courses/Create C
 8. Only then continue.
 
 ## 12. Current next action
-**Run the full live RBAC matrix across all authenticated roles and verify direct RPC enforcement.** Preserve Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
+**First complete the Chat emoji runtime diagnosis (deployment/browser vs frontend runtime) without changing SQL or repeating prior emoji fixes. Then resume the full live RBAC matrix across all authenticated roles and verify direct RPC enforcement.** Preserve Draft/Published/Archived workflow and Supabase RPC/RLS authorization. Do not start the automatic generation engine until native lesson management is solid.
 
 ## 13. Verification status
 - Static repository changes: committed.
@@ -180,6 +199,14 @@ Browser checks completed: User hides Courses; Modérateur hides Courses/Create C
 - Full RBAC runtime matrix: pending.
 
 ## Change log
+### 2026-10-06 — Chat/send + emoji investigation checkpoint
+- Confirmed current `main` includes the chat send runtime fix and the single-click emoji implementation.
+- Confirmed current `chat.html` contains no duplicate inline emoji fallback and `chat-interactions.js` binds one `click` handler to `#emojiBtn`.
+- Confirmed chat CSS explicitly supports picker visibility and mobile touch interaction.
+- User verification: sending messages works; emoji picker remains non-functional.
+- No further SQL or emoji code change made during this investigation.
+- Next: distinguish deployed/browser state from frontend runtime behavior, then continue RBAC matrix.
+
 ## 2026-10-03 — Native management RPC ACL hardening + RBAC UI verification
 - Verified and hardened EXECUTE ACLs for the native course/lesson management RPCs.
 - Explicitly revoked `anon` EXECUTE from `admin_create_course`, `admin_add_lesson`, `admin_publish_course`, `admin_archive_course`, and `admin_publish_lesson`.
